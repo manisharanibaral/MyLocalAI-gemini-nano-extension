@@ -1,0 +1,47 @@
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
+## Project rule
+
+Write code that other developers can maintain: small, named, single-purpose functions; comments that explain *why*, not *what*; no clever tricks; and keep new behaviour next to the existing code that owns it instead of adding parallel mechanisms.
+
+## What this is
+
+MyLocalAI is a Manifest V3 browser extension (Chrome side panel) for private on-device chat. There is no `package.json`, bundler, or dependency install: it is plain JS/HTML/CSS. Node 18+ is only needed for the build and tests.
+
+## Commands
+
+```bash
+node scripts/build.mjs               # build all editions into dist/mylocalai-{nano,ollama,mixed}/
+node scripts/build.mjs nano          # build one edition (nano | ollama | mixed)
+node scripts/build.mjs --zip         # also produce dist/mylocalai-<edition>.zip (needs `zip`)
+
+node tests/regression-checks.mjs     # static checks over source files (no browser)
+node tests/edition-checks.mjs        # runs the build, then asserts each dist/ edition's config + manifest
+```
+
+Tests are plain `node:assert` scripts, so there is no runner or single-test flag: run one file at a time. They read source files as text (e.g. `functionBody()` extracts a function from `sidebar.js`) rather than executing the extension, so renaming or moving a function in `sidebar.js` can break a regression check.
+
+To try changes: load the repo root (the Mixed edition) or a `dist/` folder via `chrome://extensions` → Load unpacked, then use ↻ on the extension and reopen the side panel.
+
+## Architecture
+
+**One codebase, three editions.** The repo root *is* the Mixed edition (`manifest.json` + `config.js`). `scripts/build.mjs` copies `SHARED_FILES` into each `dist/` folder and generates a per-edition `manifest.json` (overrides in `EDITIONS`: name, description, `host_permissions`, `minimum_chrome_version`) and `config.js` (`window.MYLOCALAI_CONFIG = { edition, backends }`). Consequences:
+- Make changes in root files, never in `dist/` (git-ignored, overwritten on build).
+- A new runtime file must be added to `SHARED_FILES` in `scripts/build.mjs`, or it will not ship in `dist/`.
+- The Nano edition deliberately has no `host_permissions`; don't add network access to shared code paths without considering that.
+- Edition differences belong in `EDITIONS` / `config.js`, not in `if (edition === …)` branches in the UI code. `sidebar.js` only reads `backends` (`nanoEnabled` / `ollamaEnabled`).
+
+**Runtime pieces**
+- `background.js` (service worker): opens the side panel on action click, registers the right-click "Use selection as MyLocalAI context" menu, and holds the pending selection. It hands text to the panel via a `TEXT_SELECTED` message, or the panel pulls it with `GET_SELECTED_CONTEXT` on load (covers the panel not being open yet).
+- `sidebar.html/.css/.js`: the entire chat UI and both AI backends, in a single IIFE in `sidebar.js` (~1.5k lines). Sections are marked with `// ===== NAME =====` banners (DOM refs, edition config, state, settings, sessions/history, backend init, streaming, rendering, event listeners).
+- Backend selection (`init` → `initNanoSession` / `initOllamaSession`): Nano is tried first when enabled, Ollama is the fallback; `activeBackend` is `"nano" | "ollama" | null` and `updateBackendUI` reflects it. Sending goes through `sendMessage` → `streamNano` or `streamOllama`.
+  - Nano uses Chrome's `LanguageModel` Prompt API (session object kept in `session`).
+  - Ollama uses the REST API at `DEFAULT_OLLAMA_URL` with `fetchWithTimeout`; its default model (`DEFAULT_OLLAMA_MODEL`) and URL are defined once near the top of `sidebar.js`.
+- Rendering: `marked.umd.js` parses Markdown and `purify.min.js` (DOMPurify) sanitizes it; route model output through `setSafeHtml`, never assign raw HTML.
+- State is persisted in extension storage per edition (chat sessions, saved prompts, settings), so installed editions don't share history.
+
+**Unused file:** `content.js` (answers `GET_SELECTED_TEXT`) is not referenced by `manifest.json` or `SHARED_FILES`, so it never ships; selection capture goes through the context menu in `background.js`. It is only read by `tests/regression-checks.mjs`.
+
+`README.md` holds the user-facing setup (Chrome flags for Gemini Nano, Ollama CORS via `OLLAMA_ORIGINS` and `set-ollama-cors.plist`); update it when changing editions or setup requirements.

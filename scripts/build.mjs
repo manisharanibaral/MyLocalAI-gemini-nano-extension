@@ -24,6 +24,7 @@ const SHARED_FILES = [
   "sidebar.css",
   "sidebar.js",
   "purify.min.js",
+  "marked.umd.js",
   "icons",
 ];
 

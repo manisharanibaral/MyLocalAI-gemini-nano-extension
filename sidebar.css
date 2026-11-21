@@ -493,7 +493,8 @@ html, body {
   display: flex;
   flex-direction: column;
   gap: 4px;
-  scroll-behavior: smooth;
+  /* No smooth scrolling: it fights user scrolling while streaming. */
+  overflow-anchor: none;
 }
 .messages.hidden { display: none; }
 
@@ -534,6 +535,11 @@ html, body {
   white-space: pre-wrap;
   max-width: 100%;
 }
+
+/* AI bubbles hold rendered Markdown HTML, so normal whitespace handling. */
+.msg.ai .msg-bubble { white-space: normal; }
+.msg-bubble > :first-child { margin-top: 0; }
+.msg-bubble > :last-child { margin-bottom: 0; }
 
 .msg.user .msg-bubble {
   background: hsla(260, 60%, 55%, 0.12);
@@ -743,7 +749,7 @@ html, body {
 .table-container {
   margin: 12px 0;
   border-radius: var(--radius-sm);
-  overflow: hidden;
+  overflow-x: auto;
   border: 1px solid var(--border-subtle);
 }
 

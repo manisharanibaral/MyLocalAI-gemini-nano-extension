@@ -160,6 +160,7 @@ Editions are defined in `EDITIONS` in [scripts/build.mjs](scripts/build.mjs). Th
 ├── background.js        side panel + right-click menu
 ├── sidebar.html/.css/.js chat UI and both AI backends
 ├── purify.min.js        DOMPurify (sanitizes rendered Markdown)
+├── marked.umd.js        marked (Markdown parser: tables, lists, code, …)
 ├── scripts/build.mjs    builds dist/mylocalai-{nano,ollama,mixed}
 └── tests/
     ├── regression-checks.mjs

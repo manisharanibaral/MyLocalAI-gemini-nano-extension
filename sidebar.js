@@ -88,6 +88,7 @@
   let modelSupportsThinking = false;
   let isOllamaModelValid = true;
   let isAutoScrollEnabled = true;
+  let lastScrollTop = 0;
   let listenersInitialized = false;
 
   // Single source of truth for Ollama defaults (the settings inputs are filled from these).
@@ -913,6 +914,8 @@ Always prefer structured output over plain paragraphs.`;
     } catch (err) {
       if (err.name === "AbortError") {
         // preserve the text and any reasoning blocks
+        aiBubble.dataset.done = "1";
+        aiBubble.style.minHeight = "";
         const currentHtml = aiBubble.innerHTML.replace('<span class="cursor">\u200B</span>', "");
         setSafeHtml(aiBubble, currentHtml || "(Generation stopped)");
       } else {
@@ -1194,16 +1197,34 @@ Always prefer structured output over plain paragraphs.`;
     return null;
   }
 
+  // Streaming render: coalesced to one DOM update per frame, and the bubble
+  // can only grow while streaming (min-height ratchet) so half-parsed markdown
+  // never makes the response area jump smaller.
+  const pendingRenders = new WeakMap();
   function renderStreamingText(bubble, text, reasoning = "") {
-    let html = "";
-    if (reasoning) {
-      html += `<details class="thinking-block" open><summary>Thinking...</summary><div class="thinking-content">${formatResponseText(reasoning)}</div></details>`;
-    }
-    html += formatResponseText(text) + '<span class="cursor">\u200B</span>';
-    setSafeHtml(bubble, html);
+    const pending = pendingRenders.get(bubble);
+    if (pending) { pending.text = text; pending.reasoning = reasoning; return; }
+    pendingRenders.set(bubble, { text, reasoning });
+    requestAnimationFrame(() => {
+      const job = pendingRenders.get(bubble);
+      pendingRenders.delete(bubble);
+      if (!job || bubble.dataset.done) return;
+      let html = "";
+      if (job.reasoning) {
+        html += `<details class="thinking-block" open><summary>Thinking...</summary><div class="thinking-content">${formatResponseText(job.reasoning)}</div></details>`;
+      }
+      html += formatResponseText(job.text) + '<span class="cursor">\u200B</span>';
+      setSafeHtml(bubble, html);
+      const h = bubble.offsetHeight;
+      if (h > (parseFloat(bubble.style.minHeight) || 0)) bubble.style.minHeight = h + "px";
+      scrollToBottom();
+    });
   }
 
   function finalizeMessage(bubble, text, reasoning = "") {
+    bubble.dataset.done = "1";
+    pendingRenders.delete(bubble);
+    bubble.style.minHeight = "";
     let html = "";
     if (reasoning) {
       // close it when finished
@@ -1213,104 +1234,42 @@ Always prefer structured output over plain paragraphs.`;
     setSafeHtml(bubble, html);
   }
 
+  // Markdown rendering via the vendored `marked` library (GFM: tables, lists,
+  // task lists, strikethrough…). Output is always sanitized by DOMPurify.
+  const markdownRenderer = (() => {
+    if (typeof marked === "undefined") return null;
+    const renderer = new marked.Renderer();
+    const baseTable = marked.Renderer.prototype.table;
+
+    // Keep the code header + Copy button.
+    renderer.code = ({ text, lang }) => {
+      const label = escapeHtml((lang || "").split(/\s+/)[0] || "code");
+      return `<div class="code-container"><div class="code-header"><span class="code-lang">${label}</span><button class="btn-copy-code" type="button" title="Copy code">Copy</button></div><pre class="code-block"><code>${escapeHtml(text)}</code></pre></div>`;
+    };
+    // Scrollable wrapper so wide tables don't break the layout.
+    renderer.table = function (token) {
+      return `<div class="table-container">${baseTable.call(this, token)}</div>`;
+    };
+    // Never pass raw HTML from the model through; show it as text.
+    renderer.html = ({ text }) => escapeHtml(text);
+
+    return renderer;
+  })();
+
+  if (typeof DOMPurify !== "undefined") {
+    // Links inside the sidebar must open in a new tab, not replace the chat.
+    DOMPurify.addHook("afterSanitizeAttributes", (node) => {
+      if (node.tagName === "A") {
+        node.setAttribute("target", "_blank");
+        node.setAttribute("rel", "noopener noreferrer");
+      }
+    });
+  }
+
   function formatResponseText(text) {
     if (!text) return "";
-
-    // 1. Protect code blocks
-    const codeBlocks = [];
-    let processed = text.replace(/```(\w*)\n([\s\S]*?)```/g, (match, lang, code) => {
-      const id = codeBlocks.length;
-      codeBlocks.push({ lang: lang || "", code: code.trim() });
-      return `__CODE_BLOCK_${id}__`;
-    });
-
-    // 2. Protect tables (before HTML escaping)
-    const tableBlocks = [];
-    processed = processed.replace(/((?:^\|.+\|$\n?){2,})/gm, (match) => {
-      const id = tableBlocks.length;
-      tableBlocks.push(match.trim());
-      return `__TABLE_BLOCK_${id}__`;
-    });
-
-    // 3. Escape HTML
-    processed = escapeHtml(processed);
-
-    // 4. Process Markdown (order matters)
-    // Headers
-    processed = processed.replace(/^### (.*$)/gm, "<h3>$1</h3>");
-    processed = processed.replace(/^## (.*$)/gm, "<h2>$1</h2>");
-    processed = processed.replace(/^# (.*$)/gm, "<h1>$1</h1>");
-
-    // Bold & Italic
-    processed = processed.replace(/\*\*\*(.+?)\*\*\*/g, "<strong><em>$1</em></strong>");
-    processed = processed.replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>");
-    processed = processed.replace(/__(.+?)__/g, "<strong>$1</strong>");
-    processed = processed.replace(/\*(.+?)\*/g, "<em>$1</em>");
-    processed = processed.replace(/_(.+?)_/g, "<em>$1</em>");
-
-    // Blockquotes
-    processed = processed.replace(/^&gt; (.*$)/gm, "<blockquote>$1</blockquote>");
-
-    // Inline Code (must be after escaping but before block restore)
-    processed = processed.replace(/`([^`]+)`/g, "<code>$1</code>");
-
-    // Horizontal Rule
-    processed = processed.replace(/^---$/gm, "<hr>");
-
-    // Lists (simplified)
-    processed = processed.replace(/^\s*[\*+-] (.*$)/gm, "<li>$1</li>");
-    processed = processed.replace(/^\s*\d+\. (.*$)/gm, "<li>$1</li>");
-
-    // Wrap sequences of <li> in <ul>
-    processed = processed.replace(/(<li>.*<\/li>(\n<li>.*<\/li>)*)/g, "<ul>$1</ul>");
-
-    // Line breaks (for anything not inside a block tag)
-    // We use white-space: pre-wrap in CSS, so we don't strictly need <br> for every newline,
-    // but paragraphs help.
-    processed = processed.replace(/\n\n/g, '<div class="space"></div>');
-
-    // 5. Clean up newlines around block elements to avoid double-spacing with pre-wrap
-    processed = processed.replace(/<\/(h1|h2|h3|ul|ol|li|blockquote|hr|div|table)>\n/g, "</$1>");
-    processed = processed.replace(/\n<(h1|h2|h3|ul|ol|li|blockquote|hr|div|table)>/g, "<$1>");
-
-    // 6. Restore Code Blocks
-    codeBlocks.forEach((block, i) => {
-      const escapedCode = escapeHtml(block.code);
-      const langLabel = block.lang ? escapeHtml(block.lang) : "code";
-      const blockHtml = `<div class="code-container"><div class="code-header"><span class="code-lang">${langLabel}</span><button class="btn-copy-code" type="button" title="Copy code">Copy</button></div><pre class="code-block"><code>${escapedCode}</code></pre></div>`;
-      processed = processed.replace(`__CODE_BLOCK_${i}__`, blockHtml);
-    });
-
-    // 7. Restore Table Blocks
-    tableBlocks.forEach((block, i) => {
-      const rows = block.split("\n").filter(r => r.trim());
-      if (rows.length < 2) return;
-
-      let tableHtml = '<div class="table-container"><table>';
-
-      // Header row
-      const headerCells = rows[0].split("|").filter(c => c.trim() !== "");
-      tableHtml += "<thead><tr>";
-      headerCells.forEach(cell => {
-        tableHtml += `<th>${escapeHtml(cell.trim())}</th>`;
-      });
-      tableHtml += "</tr></thead><tbody>";
-
-      // Skip separator row (row[1] with dashes), process data rows
-      for (let r = 2; r < rows.length; r++) {
-        const cells = rows[r].split("|").filter(c => c.trim() !== "");
-        tableHtml += "<tr>";
-        cells.forEach(cell => {
-          tableHtml += `<td>${escapeHtml(cell.trim())}</td>`;
-        });
-        tableHtml += "</tr>";
-      }
-
-      tableHtml += "</tbody></table></div>";
-      processed = processed.replace(`__TABLE_BLOCK_${i}__`, tableHtml);
-    });
-
-    return processed;
+    if (!markdownRenderer) return escapeHtml(text);
+    return marked.parse(text, { gfm: true, breaks: true, async: false, renderer: markdownRenderer });
   }
 
   function escapeHtml(text) {
@@ -1325,13 +1284,19 @@ Always prefer structured output over plain paragraphs.`;
     element.replaceChildren(...doc.body.childNodes);
   }
 
+  // Auto-scroll follows the stream only while the user is "pinned" to the
+  // bottom. Any upward user scroll unpins; scrolling back down re-pins.
+  let scrollQueued = false;
   function scrollToBottom(force = false) {
-    if (force || isAutoScrollEnabled) {
-      requestAnimationFrame(() => { 
-        messagesEl.scrollTop = messagesEl.scrollHeight; 
-        isAutoScrollEnabled = true;
-      });
-    }
+    if (force) isAutoScrollEnabled = true;
+    if (!isAutoScrollEnabled || scrollQueued) return;
+    scrollQueued = true;
+    requestAnimationFrame(() => {
+      scrollQueued = false;
+      if (!isAutoScrollEnabled) return;
+      messagesEl.scrollTop = messagesEl.scrollHeight;
+      lastScrollTop = messagesEl.scrollTop;
+    });
   }
 
   function updateTokenInfo() {
@@ -1491,11 +1456,19 @@ Always prefer structured output over plain paragraphs.`;
     if (listenersInitialized) return;
     listenersInitialized = true;
 
-    messagesEl.addEventListener("scroll", () => {
-      const threshold = 100; 
-      const isAtBottom = messagesEl.scrollHeight - messagesEl.scrollTop - messagesEl.clientHeight <= threshold;
-      isAutoScrollEnabled = isAtBottom;
+    const unpin = () => { isAutoScrollEnabled = false; };
+    messagesEl.addEventListener("wheel", (e) => { if (e.deltaY < 0) unpin(); }, { passive: true });
+    messagesEl.addEventListener("touchmove", unpin, { passive: true });
+    messagesEl.addEventListener("keydown", (e) => {
+      if (["ArrowUp", "PageUp", "Home"].includes(e.key)) unpin();
     });
+    messagesEl.addEventListener("scroll", () => {
+      const top = messagesEl.scrollTop;
+      const distance = messagesEl.scrollHeight - top - messagesEl.clientHeight;
+      if (top < lastScrollTop - 1) isAutoScrollEnabled = false; // user moved up
+      else if (distance <= 24) isAutoScrollEnabled = true;       // back at bottom
+      lastScrollTop = top;
+    }, { passive: true });
 
     messagesEl.addEventListener("click", async (e) => {
       const btn = e.target.closest(".btn-copy-code");
