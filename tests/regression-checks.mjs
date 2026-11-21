@@ -152,4 +152,40 @@ const sidebarCss = read("sidebar.css");
 assert.match(sidebarCss, /\.msg\.user \.msg-label\s*\{[^}]*align-self:\s*flex-end/, "You label should align over the prompt");
 assert.match(sidebarCss, /\.msg\.ai\s*\{\s*margin-bottom/, "AI responses should have bottom margin");
 
+// Idle unload: the model must be released when idle and brought back on the next send.
+assert.match(sidebarHtml, /<select id="idle-unload"/, "settings should offer an idle-unload dropdown");
+assert.match(sidebarHtml, /<select id="idle-unload"[\s\S]*?<option value="0">Never/, "idle-unload dropdown should include Never");
+assert.match(functionBody(sidebarJs, "saveSettings"), /idleUnloadMinutes/, "idle-unload choice should be saved");
+assert.match(functionBody(sidebarJs, "loadSettings"), /idleUnloadMinutes/, "idle-unload choice should be restored");
+assert.match(functionBody(sidebarJs, "scheduleIdleUnload"), /delayMs\s*===\s*0/, "choosing Never should not schedule an unload");
+const unloadModel = functionBody(sidebarJs, "unloadModel");
+assert.match(unloadModel, /isGenerating[\s\S]*return/, "unloadModel must never run during generation");
+assert.match(unloadModel, /destroySession\(\)/, "unloadModel should destroy the Nano session");
+assert.match(unloadModel, /unloadOllamaModel\(\)/, "unloadModel should evict the Ollama model");
+assert.match(
+  functionBody(sidebarJs, "unloadOllamaModel"),
+  /keep_alive:\s*0/,
+  "Ollama unload should send keep_alive: 0"
+);
+assert.match(
+  functionBody(sidebarJs, "ensureModelLoaded"),
+  /initNanoSession\(\)/,
+  "ensureModelLoaded should recreate the Nano session"
+);
+assert.match(
+  functionBody(sidebarJs, "sendMessage"),
+  /await ensureModelLoaded\(\)/,
+  "sendMessage should reload an unloaded model before prompting"
+);
+assert.match(
+  initNanoSession,
+  /isModelUnloaded\s*=\s*false/,
+  "creating a Nano session should clear the unloaded flag (avoids double init)"
+);
+assert.match(
+  functionBody(sidebarJs, "sendMessage").slice(-400),
+  /scheduleIdleUnload\(\)/,
+  "idle timer should restart after each response"
+);
+
 console.log("Regression checks passed");

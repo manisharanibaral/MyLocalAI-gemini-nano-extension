@@ -60,6 +60,7 @@
   const backendHint = $("#backend-hint");
   const ollamaModelInput = $("#ollama-model");
   const ollamaUrlInput = $("#ollama-url");
+  const idleUnloadSelect = $("#idle-unload");
   const ollamaSettings = $("#ollama-settings");
   const ollamaSettingsLabel = $("#ollama-settings-label");
 
@@ -93,6 +94,8 @@
   let markdownRendererCache; // undefined = not built yet
   const pendingRenders = new WeakMap();
   let listenersInitialized = false;
+  let idleUnloadTimer = null;     // fires unloadModel() after a quiet period
+  let isModelUnloaded = false;    // true while the model is released from memory
 
   // Single source of truth for Ollama defaults (the settings inputs are filled from these).
   const DEFAULT_OLLAMA_MODEL = "gemma4:e4b";
@@ -105,6 +108,10 @@
   const GENERATION_TIMEOUT_MS = 120000;
   const MAX_CHAT_MESSAGES = 100;
   const MAX_SAVED_SESSIONS = 50;
+  // The model stays in RAM for as long as a session/loaded model exists, so release it when idle.
+  // The user picks the delay in settings (minutes; 0 = never unload).
+  const DEFAULT_IDLE_UNLOAD_MINUTES = 5;
+  const getIdleUnloadMs = () => (parseInt(idleUnloadSelect.value, 10) || 0) * 60 * 1000;
 
   // Create span for model status in settings
   const modelStatusSpan = document.createElement("span");
@@ -153,8 +160,13 @@ Always prefer structured output over plain paragraphs.`;
   function loadSettings() {
     ollamaModelInput.value = ollamaModelInput.placeholder = DEFAULT_OLLAMA_MODEL;
     ollamaUrlInput.value = ollamaUrlInput.placeholder = DEFAULT_OLLAMA_URL;
+    idleUnloadSelect.value = String(DEFAULT_IDLE_UNLOAD_MINUTES);
 
     try {
+      const savedIdle = localStorage.getItem("idleUnloadMinutes");
+      if (savedIdle !== null && [...idleUnloadSelect.options].some(o => o.value === savedIdle)) {
+        idleUnloadSelect.value = savedIdle;
+      }
       if (localStorage.getItem("sysPrompt")) sysPromptEl.value = localStorage.getItem("sysPrompt");
       if (localStorage.getItem("temp")) tempSlider.value = localStorage.getItem("temp");
       if (localStorage.getItem("topk")) topkSlider.value = localStorage.getItem("topk");
@@ -198,6 +210,7 @@ Always prefer structured output over plain paragraphs.`;
       localStorage.setItem("topk", topkSlider.value);
       localStorage.setItem("ollamaModel", ollamaModelInput.value);
       localStorage.setItem("ollamaUrl", ollamaUrlInput.value);
+      localStorage.setItem("idleUnloadMinutes", idleUnloadSelect.value);
     } catch (e) {
       console.warn("[MyLocalAI] Could not save settings", e);
     }
@@ -413,6 +426,7 @@ Always prefer structured output over plain paragraphs.`;
 
   async function init() {
     loadSettings();
+    clearTimeout(idleUnloadTimer);
     loadSessions();
 
     // Load most recent active session if exists
@@ -432,6 +446,7 @@ Always prefer structured output over plain paragraphs.`;
         activeBackend = "nano";
         updateBackendUI();
         hideStatus();
+        scheduleIdleUnload();
         return;
       } catch (nanoErr) {
         console.warn("[MyLocalAI] Gemini Nano not available:", nanoErr.message);
@@ -445,6 +460,7 @@ Always prefer structured output over plain paragraphs.`;
         activeBackend = "ollama";
         updateBackendUI();
         hideStatus();
+        scheduleIdleUnload();
         return;
       } catch (ollamaErr) {
         console.warn("[MyLocalAI] Ollama not available:", ollamaErr.message);
@@ -638,6 +654,7 @@ Always prefer structured output over plain paragraphs.`;
     }
 
     isCreating = false;
+    isModelUnloaded = false;
     hideStatus();
 
     console.log("[MyLocalAI] Nano session created. contextWindow:", nanoWindow(), "Vision:", modelSupportsVision);
@@ -682,6 +699,7 @@ Always prefer structured output over plain paragraphs.`;
 
     // Session is just "connection verified" for Ollama
     session = null; // no persistent session object for Ollama
+    isModelUnloaded = false;
     modelSupportsVision = false;
     modelSupportsThinking = false;
 
@@ -844,10 +862,68 @@ Always prefer structured output over plain paragraphs.`;
     await init();
   }
 
+  // ===================== IDLE UNLOAD (free memory) =====================
+  // Chat history lives in the UI/storage, so releasing the model loses nothing visible.
+  // Nano forgets its in-model context after a reload; Ollama re-sends history on each request.
+  function scheduleIdleUnload() {
+    clearTimeout(idleUnloadTimer);
+    const delayMs = getIdleUnloadMs();
+    if (!activeBackend || delayMs === 0) return;
+    idleUnloadTimer = setTimeout(unloadModel, delayMs);
+  }
+
+  async function unloadModel() {
+    if (isGenerating || isModelUnloaded || !activeBackend) return;
+    if (activeBackend === "nano") {
+      await destroySession();
+    } else {
+      await unloadOllamaModel();
+    }
+    isModelUnloaded = true;
+    console.log("[MyLocalAI] Model unloaded after idle period.");
+  }
+
+  // Ollama keeps a model resident for its own keep_alive window; keep_alive: 0 evicts it now.
+  async function unloadOllamaModel() {
+    try {
+      await fetchWithTimeout(`${getOllamaUrl()}/api/generate`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ model: getOllamaModel(), keep_alive: 0 }),
+      }, REQUEST_TIMEOUT_MS);
+    } catch (err) {
+      console.warn("[MyLocalAI] Could not unload Ollama model:", err.message);
+    }
+  }
+
+  // Ollama reloads its model on the next request by itself; only Nano needs a new session.
+  async function ensureModelLoaded() {
+    clearTimeout(idleUnloadTimer);
+    if (!isModelUnloaded) return;
+    if (activeBackend === "nano") {
+      showStatus("loading", "Reloading model…", "Loading Gemini Nano back into memory");
+      await initNanoSession();
+      hideStatus();
+    }
+    isModelUnloaded = false;
+  }
+
   // ===================== CHAT LOGIC =====================
   async function sendMessage(text) {
     if ((!text.trim() && !currentAttachedImage) || isGenerating) return;
     if (!activeBackend) return;
+
+    try {
+      await ensureModelLoaded();
+    } catch (err) {
+      console.error("[MyLocalAI] Model reload failed:", err);
+      hideStatus();
+      welcomeScreen.classList.add("hidden");
+      messagesEl.classList.remove("hidden");
+      appendMessage("ai", `⚠️ Could not reload the model: ${err.message}`);
+      scheduleIdleUnload();
+      return;
+    }
 
     const imageToSend = currentAttachedImage;
     const typedPrompt = text.trim() || "Describe this image.";
@@ -933,6 +1009,7 @@ Always prefer structured output over plain paragraphs.`;
       btnSend.classList.remove("hidden");
       btnSend.disabled = !userInput.value.trim();
       updateTokenInfo();
+      scheduleIdleUnload();
     }
   }
 
