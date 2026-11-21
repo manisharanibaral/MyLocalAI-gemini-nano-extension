@@ -188,4 +188,37 @@ assert.match(
   "idle timer should restart after each response"
 );
 
+// Chrome built-in AI guidance: base session + clone() per chat, re-downloads, overflow, purge.
+const currentInitNano = functionBody(sidebarJs, "initNanoSession");
+assert.match(currentInitNano, /nanoBaseSession\s*=\s*created/, "initNanoSession should keep the created session as the base");
+assert.match(currentInitNano, /cloneNanoBaseSession\(\)/, "the chat session should be a clone of the base session");
+assert.match(currentInitNano, /destroyNanoSessions\(\)[\s\S]*lm\.create/, "initNanoSession should destroy old sessions before creating new ones");
+assert.match(functionBody(sidebarJs, "cloneNanoBaseSession"), /\.clone\(\)/, "chats should use session.clone()");
+assert.match(functionBody(sidebarJs, "cloneNanoBaseSession"), /watchNanoContextOverflow/, "every chat clone should watch for context overflow");
+assert.match(functionBody(sidebarJs, "startNewChat"), /resetNanoChat\(\)/, "New chat should clone the base session instead of recreating it");
+assert.equal(/initNanoSession/.test(functionBody(sidebarJs, "startNewChat")), false, "New chat should not reload the model");
+assert.match(functionBody(sidebarJs, "loadConversation"), /resetNanoChat\(\)/, "loading a saved chat should reset Nano's context via a clone");
+assert.match(functionBody(sidebarJs, "resetNanoChat"), /isModelUnloaded[\s\S]*initNanoSession\(\)/, "resetNanoChat should fall back to a full init when no base exists");
+assert.match(functionBody(sidebarJs, "destroyNanoSessions"), /nanoBaseSession/, "destroyNanoSessions must also destroy the base session");
+assert.match(functionBody(sidebarJs, "destroySession"), /destroyNanoSessions\(\)/, "idle unload/restart should release the base session too");
+assert.match(functionBody(sidebarJs, "watchNanoContextOverflow"), /"contextoverflow"/, "Nano context overflow should be surfaced");
+assert.match(functionBody(sidebarJs, "updateTokenInfo"), /nanoContextTrimmed/, "token info should say when old turns were dropped");
+
+// Download progress: loaded is a 0–1 fraction, and 1 means "preparing", not "done".
+const downloadStatus = functionBody(sidebarJs, "nanoDownloadStatus");
+assert.match(downloadStatus, /fraction\s*>=\s*1[\s\S]*Preparing/, "a finished download should show a preparing step");
+assert.equal(/hideStatus/.test(downloadStatus), false, "download progress must not hide the overlay before create() resolves");
+assert.equal(/one-time/i.test(functionBody(sidebarJs, "nanoDownloadExplanation")), false, "download copy must not promise a one-time download");
+assert.match(currentInitNano, /avail === "downloadable"[\s\S]*nanoDownloadExplanation\(\)/, "a gesture-started download should show the download status");
+
+// Device limits and error handling.
+assert.match(functionBody(sidebarJs, "applyNanoParamLimits"), /lm\.params\(\)[\s\S]*maxTopK[\s\S]*maxTemperature/, "slider limits should come from LanguageModel.params()");
+assert.match(currentInitNano, /applyNanoParamLimits\(lm\)/, "initNanoSession should apply the device's param limits");
+assert.match(functionBody(sidebarJs, "describeNanoPromptError"), /QuotaExceededError/, "an over-long prompt should get a readable error");
+assert.match(functionBody(sidebarJs, "recoverIfNanoModelRemoved"), /isModelUnloaded\s*=\s*true/, "a purged model should be re-initialised on the next send");
+const sendMessageBody = functionBody(sidebarJs, "sendMessage");
+assert.match(sendMessageBody, /recoverIfNanoModelRemoved\(\)/, "failed Nano prompts should check whether Chrome removed the model");
+assert.match(sendMessageBody, /describeNanoPromptError\(err\)/, "failed Nano prompts should use the readable error");
+assert.equal(/one time only/i.test(read("README.md")), false, "README should not promise a one-time Nano download");
+
 console.log("Regression checks passed");

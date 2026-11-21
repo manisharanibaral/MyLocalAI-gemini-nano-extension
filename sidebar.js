@@ -75,7 +75,11 @@
 
   // ===================== STATE =====================
   let lastNanoError = "";
-  let session = null;        // Gemini Nano session (when using nano backend)
+  let session = null;        // Gemini Nano session for the current chat (a clone of nanoBaseSession)
+  // Chrome's guidance: create one session holding only the system prompt, then clone() it per chat.
+  // Cloning is much faster than create(), so "New chat" no longer reloads the model.
+  let nanoBaseSession = null;
+  let nanoContextTrimmed = false; // set when Nano dropped old turns to fit its context window
   let abortController = null;
   let isGenerating = false;
   let chatHistory = [];        // Messages for the current session
@@ -323,11 +327,10 @@ Always prefer structured output over plain paragraphs.`;
     updateTokenInfo();
     historyPanel.classList.add("hidden");
 
-    // Re-init Nano session if using Nano to clear its internal context
+    // Give the loaded conversation a fresh Nano context (the old chat's turns must not leak in)
     if (activeBackend === "nano" && session) {
-      destroySession().then(async () => {
-        await initNanoSession();
-        hideStatus();
+      resetNanoChat().then(hideStatus).catch((err) => {
+        console.warn("[MyLocalAI] Could not reset Nano chat:", err.message);
       });
     }
   }
@@ -402,7 +405,6 @@ Always prefer structured output over plain paragraphs.`;
 
   async function startNewChat() {
     if (isGenerating) stopGeneration();
-    await destroySession();
     chatHistory = [];
     currentSessionId = Date.now().toString();
     clearContext();
@@ -410,14 +412,14 @@ Always prefer structured output over plain paragraphs.`;
     messagesEl.innerHTML = "";
     messagesEl.classList.add("hidden");
     welcomeScreen.classList.remove("hidden");
-    updateTokenInfo();
 
     try {
       if (activeBackend === "nano") {
-        await initNanoSession();
+        await resetNanoChat();
         hideStatus();
       }
     } catch (_) { }
+    updateTokenInfo();
   }
 
   // ===================== INIT =====================
@@ -586,9 +588,8 @@ Always prefer structured output over plain paragraphs.`;
         // create() needs a user gesture to start the download; Retry button click provides one.
         throw new Error("NANO_NEEDS_GESTURE");
       }
-      if (avail === "downloading" || avail === "after-download") {
-        showStatus("loading", "Downloading Gemini Nano…",
-          "Downloading the on-device model (~4 GB).\nThis is a one-time download.");
+      if (avail === "downloadable" || avail === "downloading" || avail === "after-download") {
+        showStatus("loading", "Downloading Gemini Nano…", nanoDownloadExplanation());
       }
 
       try {
@@ -621,31 +622,29 @@ Always prefer structured output over plain paragraphs.`;
       monitor(m) {
         m.addEventListener("downloadprogress", (e) => {
           if (!isCreating) return; // Prevent late events from getting the UI stuck
-          if (e.loaded >= e.total) {
-            hideStatus();
-            return;
-          }
-          const pct = Math.round((e.loaded / e.total) * 100);
-          if (pct === 100) return; // Avoid flashing 100% just before it finishes
-          showStatus("loading", "Downloading Gemini Nano…", `Progress: ${pct}%`);
+          const status = nanoDownloadStatus(e.loaded, e.total);
+          showStatus("loading", status.title, status.message);
         });
       },
     };
 
+    // Recreating the base session (settings change, reload after idle) must not leak the old one.
+    destroyNanoSessions();
+    let created;
     try {
-      session = await lm.create(createOptions);
+      created = await lm.create(createOptions);
     } catch (e) {
       if (!modelSupportsVision) {
         if (!useTypedNanoOptions) throw e;
         console.warn("[MyLocalAI] Nano typed session failed, retrying legacy options:", e.message);
-        session = await lm.create({
+        created = await lm.create({
           ...options,
           monitor: createOptions.monitor,
         });
       } else {
         console.warn("[MyLocalAI] Nano vision session failed, retrying text-only:", e.message);
         modelSupportsVision = false;
-        session = await lm.create({
+        created = await lm.create({
           ...options,
           ...nanoTextOptions,
           monitor: createOptions.monitor,
@@ -654,7 +653,10 @@ Always prefer structured output over plain paragraphs.`;
     }
 
     isCreating = false;
+    nanoBaseSession = created;
+    session = await cloneNanoBaseSession();
     isModelUnloaded = false;
+    await applyNanoParamLimits(lm);
     hideStatus();
 
     console.log("[MyLocalAI] Nano session created. contextWindow:", nanoWindow(), "Vision:", modelSupportsVision);
@@ -667,6 +669,118 @@ Always prefer structured output over plain paragraphs.`;
   function nanoMeasure(text) {
     if (typeof session?.measureContextUsage === "function") return session.measureContextUsage(text);
     return session.countPromptTokens(text);
+  }
+
+  // ── Nano session lifecycle (base session + one clone per chat) ──
+  // Older Chrome builds have no clone(); then the base session itself becomes the chat
+  // session and the next new chat falls back to a full initNanoSession().
+  async function cloneNanoBaseSession() {
+    let chatSession;
+    if (typeof nanoBaseSession?.clone === "function") {
+      chatSession = await nanoBaseSession.clone();
+    } else {
+      chatSession = nanoBaseSession;
+      nanoBaseSession = null;
+    }
+    watchNanoContextOverflow(chatSession);
+    nanoContextTrimmed = false;
+    return chatSession;
+  }
+
+  // Fresh Nano context for a new or reloaded chat without reloading the model.
+  async function resetNanoChat() {
+    if (!nanoBaseSession || isModelUnloaded) {
+      await initNanoSession();
+      return;
+    }
+    try { session?.destroy(); } catch (_) { }
+    session = await cloneNanoBaseSession();
+  }
+
+  function destroyNanoSessions() {
+    // The base session can be the same object as the chat session (no-clone fallback).
+    for (const s of new Set([session, nanoBaseSession])) {
+      try { s?.destroy(); } catch (_) { }
+    }
+    session = null;
+    nanoBaseSession = null;
+  }
+
+  // When the context window fills, Nano silently drops the oldest turns (the system
+  // prompt is kept). Tell the user, because the model now "forgets" early messages.
+  function watchNanoContextOverflow(chatSession) {
+    if (typeof chatSession?.addEventListener !== "function") return;
+    chatSession.addEventListener("contextoverflow", () => {
+      nanoContextTrimmed = true;
+      updateTokenInfo();
+    });
+  }
+
+  // downloadprogress reports loaded as a 0–1 fraction (total is 1). Reaching 1 means
+  // the bytes are here but Chrome still has to unpack and load the model, which can
+  // take a while, so show that as its own step instead of hiding the overlay.
+  function nanoDownloadStatus(loaded, total = 1) {
+    const fraction = total > 0 ? loaded / total : 0;
+    if (fraction >= 1) {
+      return { title: "Preparing Gemini Nano…", message: "Download finished. Unpacking and loading the model into memory." };
+    }
+    const pct = Math.min(99, Math.round(fraction * 100));
+    return { title: "Downloading Gemini Nano…", message: `${nanoDownloadExplanation()}\n\nProgress: ${pct}%` };
+  }
+
+  // Chrome can delete the model to free disk space and fetches it again on demand, so
+  // don't promise a one-time download.
+  function nanoDownloadExplanation() {
+    return [
+      "Chrome is downloading the on-device model. The chat is ready once it finishes.",
+      "This usually happens once, but Chrome may download it again after an update",
+      "or if it removed the model to free up disk space.",
+    ].join("\n");
+  }
+
+  // Chrome reports the real Top-K / temperature range for this device; widen or narrow
+  // the shared sliders to match so users can't pick a value Nano would reject.
+  async function applyNanoParamLimits(lm) {
+    if (typeof lm?.params !== "function") return;
+    try {
+      const { maxTopK, maxTemperature } = await lm.params();
+      if (maxTopK > 0) topkSlider.max = String(maxTopK);
+      if (maxTemperature > 0) tempSlider.max = String(maxTemperature);
+      topkValue.textContent = topkSlider.value;
+      tempValue.textContent = tempSlider.value;
+    } catch (e) {
+      console.warn("[MyLocalAI] LanguageModel.params() failed:", e.message);
+    }
+  }
+
+  // Readable explanation for a failed Nano prompt.
+  function describeNanoPromptError(err) {
+    if (err?.name === "QuotaExceededError") {
+      const detail = err.requested && err.contextWindow
+        ? ` (${err.requested.toLocaleString()} tokens needed, window is ${err.contextWindow.toLocaleString()})`
+        : "";
+      return `⚠️ This message is too long for Gemini Nano${detail}.\n\nShorten it or the selected context, or start a new chat.`;
+    }
+    return `⚠️ Error: ${err.message}`;
+  }
+
+  // Chrome may delete the model at any time (low disk, policy), even mid-session. After a
+  // failed prompt, check whether that happened; if so, mark the model unloaded so the next
+  // send (a user gesture, which a re-download needs) runs initNanoSession() again.
+  async function recoverIfNanoModelRemoved() {
+    if (typeof LanguageModel === "undefined" || typeof LanguageModel.availability !== "function") return false;
+    try {
+      const avail = await LanguageModel.availability({
+        expectedInputs: [{ type: "text", languages: ["en"] }],
+        expectedOutputs: [{ type: "text", languages: ["en"] }],
+      });
+      if (avail === "available") return false;
+      destroyNanoSessions();
+      isModelUnloaded = true;
+      return true;
+    } catch (_) {
+      return false;
+    }
   }
 
   // ===================== OLLAMA BACKEND =====================
@@ -846,11 +960,9 @@ Always prefer structured output over plain paragraphs.`;
   }
 
   // ===================== DESTROY / RESTART =====================
+  // Releases the model completely (chat clone and base session); used for restart and idle unload.
   async function destroySession() {
-    if (session && activeBackend === "nano") {
-      try { session.destroy(); } catch (_) { }
-    }
-    session = null;
+    destroyNanoSessions();
   }
 
   async function restartSession() {
@@ -948,8 +1060,7 @@ Always prefer structured output over plain paragraphs.`;
           messagesEl.classList.remove("hidden");
           appendMessage("ai", `⚠️ Context limit reached!\n\n~${promptTokens} tokens needed, ${remaining} remain.\nStarting a fresh session…`);
           scrollToBottom(true);
-          await destroySession();
-          await initNanoSession();
+          await resetNanoChat();
           chatHistory = [];
           updateTokenInfo();
           appendMessage("ai", "✅ Session reset. Please re-send your message.");
@@ -998,6 +1109,12 @@ Always prefer structured output over plain paragraphs.`;
         aiBubble.style.minHeight = "";
         const currentHtml = aiBubble.innerHTML.replace('<span class="cursor">\u200B</span>', "");
         setSafeHtml(aiBubble, currentHtml || "(Generation stopped)");
+      } else if (activeBackend === "nano") {
+        console.error("[MyLocalAI] Nano prompt error:", err);
+        const removed = await recoverIfNanoModelRemoved();
+        finalizeMessage(aiBubble, removed
+          ? "⚠️ Chrome removed the Gemini Nano model (usually to free disk space).\n\nSend your message again to download it again."
+          : describeNanoPromptError(err));
       } else {
         console.error("[MyLocalAI] Prompt error:", err);
         finalizeMessage(aiBubble, `⚠️ Error: ${err.message}`);
@@ -1509,13 +1626,18 @@ Always prefer structured output over plain paragraphs.`;
   }
 
   function updateTokenInfo() {
+    tokenInfo.title = "";
     if (activeBackend === "nano" && session) {
       const used = nanoUsed();
       const max = nanoWindow();
       const left = Math.max(0, max - used);
       if (max > 0) {
         const pct = Math.round((used / max) * 100);
-        tokenInfo.textContent = `${used.toLocaleString()} / ${max.toLocaleString()} tokens · ${left.toLocaleString()} left`;
+        const trimmedNote = nanoContextTrimmed ? " · oldest messages forgotten" : "";
+        tokenInfo.textContent = `${used.toLocaleString()} / ${max.toLocaleString()} tokens · ${left.toLocaleString()} left${trimmedNote}`;
+        if (nanoContextTrimmed) {
+          tokenInfo.title = "The conversation outgrew Gemini Nano's context window, so it dropped the earliest turns. Start a new chat for a clean slate.";
+        }
         tokenInfo.style.color = pct > 85 ? "#F87171" : pct > 65 ? "#FBBF24" : "";
       }
     } else if (activeBackend === "ollama") {

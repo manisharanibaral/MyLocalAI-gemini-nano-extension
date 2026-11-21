@@ -64,7 +64,7 @@ Gemini Nano is built into desktop Google Chrome. You need to turn it on once:
 2. Open `chrome://flags/#prompt-api-for-gemini-nano` and set it to **Enabled**.
 3. Open `chrome://flags/#optimization-guide-on-device-model` and set it to **Enabled BypassPerfRequirement**.
 4. **Relaunch Chrome.**
-5. Open MyLocalAI. If it says the model is ready to download, click **Retry**. Chrome then downloads Gemini Nano (about 4 GB, one time only) and the panel shows the progress.
+5. Open MyLocalAI. If it says the model is ready to download, click **Retry**. Chrome then downloads Gemini Nano and the panel shows the progress, then a short "Preparing" step while Chrome loads the model. Chrome may download the model again later (after an update, or if it deleted the model because free disk space dropped below about 10 GB); MyLocalAI tells you when that happens, and sending a message starts the new download.
 
 Hardware Chrome needs for Gemini Nano:
 - About **22 GB free disk space** on the drive with your Chrome profile
