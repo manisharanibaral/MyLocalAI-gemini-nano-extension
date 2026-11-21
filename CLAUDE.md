@@ -6,6 +6,15 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Write code that other developers can maintain: small, named, single-purpose functions; comments that explain *why*, not *what*; no clever tricks; and keep new behaviour next to the existing code that owns it instead of adding parallel mechanisms.
 
+## Test and verify before finishing
+
+Before you tell the user a change is done:
+1. Run `node tests/regression-checks.mjs` and `node tests/edition-checks.mjs`. Both must pass. If one fails, fix the cause (or the test, if the change intentionally broke its assumption) and rerun; don't report success on a failing run.
+2. If you changed a function that a regression check reads by name, or added/renamed a runtime file, confirm the build still ships it (`node scripts/build.mjs`, then check `dist/`).
+3. The tests are static and never execute the extension. For UI or backend behaviour changes, say plainly that it was not checked in a browser, and tell the user which edition to reload and what to try.
+4. Report what you ran and the actual result, including anything you could not verify.
+5. Alway create and edit new tests and verification when you edit or add code
+
 ## What this is
 
 MyLocalAI is a Manifest V3 browser extension (Chrome side panel) for private on-device chat. There is no `package.json`, bundler, or dependency install: it is plain JS/HTML/CSS. Node 18+ is only needed for the build and tests.
@@ -22,6 +31,8 @@ node tests/edition-checks.mjs        # runs the build, then asserts each dist/ e
 ```
 
 Tests are plain `node:assert` scripts, so there is no runner or single-test flag: run one file at a time. They read source files as text (e.g. `functionBody()` extracts a function from `sidebar.js`) rather than executing the extension, so renaming or moving a function in `sidebar.js` can break a regression check.
+
+**Git hook** (`.githooks/pre-commit`, enabled with `git config core.hooksPath .githooks` — run this once per clone): every commit first runs both test scripts and is blocked if either fails. On every second commit (by total commit count) it also bumps the patch version in `manifest.json` via `scripts/bump-version.mjs` and stages it. 
 
 To try changes: load the repo root (the Mixed edition) or a `dist/` folder via `chrome://extensions` → Load unpacked, then use ↻ on the extension and reopen the side panel.
 

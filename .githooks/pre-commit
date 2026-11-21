@@ -1,0 +1,15 @@
+#!/bin/sh
+# 1. Run the tests; a failing test blocks the commit.
+# 2. On every second commit, bump the patch version in manifest.json.
+set -e
+cd "$(git rev-parse --show-toplevel)"
+
+node tests/regression-checks.mjs
+node tests/edition-checks.mjs
+
+# Commit number this commit will become (HEAD doesn't exist before the first commit).
+commits_so_far=$(git rev-list --count HEAD 2>/dev/null || echo 0)
+if [ $(((commits_so_far + 1) % 2)) -eq 0 ]; then
+  node scripts/bump-version.mjs
+  git add manifest.json
+fi

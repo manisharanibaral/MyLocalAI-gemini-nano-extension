@@ -89,6 +89,9 @@
   let isOllamaModelValid = true;
   let isAutoScrollEnabled = true;
   let lastScrollTop = 0;
+  let scrollQueued = false;
+  let markdownRendererCache; // undefined = not built yet
+  const pendingRenders = new WeakMap();
   let listenersInitialized = false;
 
   // Single source of truth for Ollama defaults (the settings inputs are filled from these).
@@ -1200,7 +1203,6 @@ Always prefer structured output over plain paragraphs.`;
   // Streaming render: coalesced to one DOM update per frame, and the bubble
   // can only grow while streaming (min-height ratchet) so half-parsed markdown
   // never makes the response area jump smaller.
-  const pendingRenders = new WeakMap();
   function renderStreamingText(bubble, text, reasoning = "") {
     const pending = pendingRenders.get(bubble);
     if (pending) { pending.text = text; pending.reasoning = reasoning; return; }
@@ -1236,8 +1238,9 @@ Always prefer structured output over plain paragraphs.`;
 
   // Markdown rendering via the vendored `marked` library (GFM: tables, lists,
   // task lists, strikethrough…). Output is always sanitized by DOMPurify.
-  const markdownRenderer = (() => {
-    if (typeof marked === "undefined") return null;
+  function getMarkdownRenderer() {
+    if (markdownRendererCache !== undefined) return markdownRendererCache;
+    if (typeof marked === "undefined") return (markdownRendererCache = null);
     const renderer = new marked.Renderer();
     const baseTable = marked.Renderer.prototype.table;
 
@@ -1253,23 +1256,24 @@ Always prefer structured output over plain paragraphs.`;
     // Never pass raw HTML from the model through; show it as text.
     renderer.html = ({ text }) => escapeHtml(text);
 
-    return renderer;
-  })();
+    if (typeof DOMPurify !== "undefined") {
+      // Links inside the sidebar must open in a new tab, not replace the chat.
+      DOMPurify.addHook("afterSanitizeAttributes", (node) => {
+        if (node.tagName === "A") {
+          node.setAttribute("target", "_blank");
+          node.setAttribute("rel", "noopener noreferrer");
+        }
+      });
+    }
 
-  if (typeof DOMPurify !== "undefined") {
-    // Links inside the sidebar must open in a new tab, not replace the chat.
-    DOMPurify.addHook("afterSanitizeAttributes", (node) => {
-      if (node.tagName === "A") {
-        node.setAttribute("target", "_blank");
-        node.setAttribute("rel", "noopener noreferrer");
-      }
-    });
+    return (markdownRendererCache = renderer);
   }
 
   function formatResponseText(text) {
     if (!text) return "";
-    if (!markdownRenderer) return escapeHtml(text);
-    return marked.parse(text, { gfm: true, breaks: true, async: false, renderer: markdownRenderer });
+    const renderer = getMarkdownRenderer();
+    if (!renderer) return escapeHtml(text);
+    return marked.parse(text, { gfm: true, breaks: true, async: false, renderer });
   }
 
   function escapeHtml(text) {
@@ -1286,7 +1290,6 @@ Always prefer structured output over plain paragraphs.`;
 
   // Auto-scroll follows the stream only while the user is "pinned" to the
   // bottom. Any upward user scroll unpins; scrolling back down re-pins.
-  let scrollQueued = false;
   function scrollToBottom(force = false) {
     if (force) isAutoScrollEnabled = true;
     if (!isAutoScrollEnabled || scrollQueued) return;
