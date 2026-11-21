@@ -9,3 +9,6 @@ yarn-error.log*
 
 # Dependencies
 node_modules/
+
+# Build output (node scripts/build.mjs)
+dist/

@@ -33,8 +33,8 @@
           <line x1="9" y1="9" x2="15" y2="15" />
         </svg>
       </div>
-      <h2 id="status-title" class="status-title">Initializing Gemini Nano…</h2>
-      <p id="status-message" class="status-message">Checking on-device model availability</p>
+      <h2 id="status-title" class="status-title">Initializing…</h2>
+      <p id="status-message" class="status-message">Looking for an available AI backend</p>
       <button id="status-retry-btn" class="btn-retry hidden">Retry</button>
     </div>
   </div>
@@ -129,18 +129,19 @@
           <input id="topk-slider" type="range" min="1" max="100" step="1" value="40" class="settings-slider" />
         </div>
       </div>
-      <div class="settings-divider"></div>
-      <div class="settings-section-label">Ollama Fallback (for non-Chrome browsers)</div>
-      <div class="settings-row">
-        <div class="settings-group flex-1">
-          <label class="settings-label" for="ollama-model">Model</label>
-          <input id="ollama-model" type="text" class="settings-input" value="gemma3:1b"
-            placeholder="gemma3:1b" />
-        </div>
-        <div class="settings-group flex-1">
-          <label class="settings-label" for="ollama-url">Ollama URL</label>
-          <input id="ollama-url" type="text" class="settings-input" value="http://localhost:11434"
-            placeholder="http://localhost:11434" />
+      <div id="ollama-settings">
+        <div class="settings-divider"></div>
+        <div id="ollama-settings-label" class="settings-section-label">Ollama Fallback (for non-Chrome browsers)</div>
+        <div class="settings-row">
+          <div class="settings-group flex-1">
+            <label class="settings-label" for="ollama-model">Model</label>
+            <!-- value/placeholder are filled from DEFAULT_OLLAMA_* in sidebar.js -->
+            <input id="ollama-model" type="text" class="settings-input" />
+          </div>
+          <div class="settings-group flex-1">
+            <label class="settings-label" for="ollama-url">Ollama URL</label>
+            <input id="ollama-url" type="text" class="settings-input" />
+          </div>
         </div>
       </div>
       <button id="btn-apply-settings" class="btn-apply">Apply & Restart Session</button>
@@ -262,6 +263,7 @@
   </div>
 
   <script src="purify.min.js"></script>
+  <script src="config.js"></script>
   <script src="sidebar.js"></script>
 </body>
 

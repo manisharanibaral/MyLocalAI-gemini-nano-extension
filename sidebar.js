@@ -5,6 +5,9 @@
  *   1. Gemini Nano (Chrome's built-in LanguageModel API) — Chrome only
  *   2. Ollama (local REST API at localhost:11434) — any browser
  *
+ * Which of these are tried is set by config.js (window.MYLOCALAI_CONFIG),
+ * so the same code ships as the Nano-only, Ollama-only and mixed editions.
+ *
  * Both backends run 100% on-device. Zero cloud.
  */
 
@@ -57,6 +60,17 @@
   const backendHint = $("#backend-hint");
   const ollamaModelInput = $("#ollama-model");
   const ollamaUrlInput = $("#ollama-url");
+  const ollamaSettings = $("#ollama-settings");
+  const ollamaSettingsLabel = $("#ollama-settings-label");
+
+  // ===================== EDITION CONFIG =====================
+  // config.js decides which backends this build may use (see scripts/build.mjs).
+  const CONFIG = window.MYLOCALAI_CONFIG || {};
+  const ENABLED_BACKENDS = Array.isArray(CONFIG.backends) && CONFIG.backends.length
+    ? CONFIG.backends
+    : ["nano", "ollama"];
+  const nanoEnabled = ENABLED_BACKENDS.includes("nano");
+  const ollamaEnabled = ENABLED_BACKENDS.includes("ollama");
 
   // ===================== STATE =====================
   let lastNanoError = "";
@@ -75,6 +89,13 @@
   let isOllamaModelValid = true;
   let isAutoScrollEnabled = true;
   let listenersInitialized = false;
+
+  // Single source of truth for Ollama defaults (the settings inputs are filled from these).
+  const DEFAULT_OLLAMA_MODEL = "gemma4:e4b";
+  const DEFAULT_OLLAMA_URL = "http://localhost:11434";
+
+  const getOllamaModel = () => ollamaModelInput.value.trim() || DEFAULT_OLLAMA_MODEL;
+  const getOllamaUrl = () => ollamaUrlInput.value.trim() || DEFAULT_OLLAMA_URL;
 
   const REQUEST_TIMEOUT_MS = 15000;
   const GENERATION_TIMEOUT_MS = 120000;
@@ -126,6 +147,9 @@ Always prefer structured output over plain paragraphs.`;
 
   // ===================== SETTINGS STORAGE =====================
   function loadSettings() {
+    ollamaModelInput.value = ollamaModelInput.placeholder = DEFAULT_OLLAMA_MODEL;
+    ollamaUrlInput.value = ollamaUrlInput.placeholder = DEFAULT_OLLAMA_URL;
+
     try {
       if (localStorage.getItem("sysPrompt")) sysPromptEl.value = localStorage.getItem("sysPrompt");
       if (localStorage.getItem("temp")) tempSlider.value = localStorage.getItem("temp");
@@ -391,36 +415,64 @@ Always prefer structured output over plain paragraphs.`;
       loadConversation(chatSessions[0].id);
     }
     browserName = await detectBrowser();
-    showStatus("loading", "Initializing…", "Looking for an available AI backend");
+    applyEditionUI();
+    showStatus("loading", "Initializing…", initStatusMessage());
     setupEventListeners();
     requestPendingSelectedContext();
 
-    // Try Gemini Nano first, then Ollama
-    try {
-      await initNanoSession();
-      activeBackend = "nano";
-      updateBackendUI();
-      hideStatus();
-      return;
-    } catch (nanoErr) {
-      console.warn("[MyLocalAI] Gemini Nano not available:", nanoErr.message);
-      lastNanoError = nanoErr.message;
+    // Try Gemini Nano first, then Ollama (whichever this edition enables)
+    if (nanoEnabled) {
+      try {
+        await initNanoSession();
+        activeBackend = "nano";
+        updateBackendUI();
+        hideStatus();
+        return;
+      } catch (nanoErr) {
+        console.warn("[MyLocalAI] Gemini Nano not available:", nanoErr.message);
+        lastNanoError = nanoErr.message;
+      }
     }
 
-    // Fallback to Ollama
-    try {
-      await initOllamaSession();
-      activeBackend = "ollama";
-      updateBackendUI();
-      hideStatus();
-      return;
-    } catch (ollamaErr) {
-      console.warn("[MyLocalAI] Ollama not available:", ollamaErr.message);
+    if (ollamaEnabled) {
+      try {
+        await initOllamaSession();
+        activeBackend = "ollama";
+        updateBackendUI();
+        hideStatus();
+        return;
+      } catch (ollamaErr) {
+        console.warn("[MyLocalAI] Ollama not available:", ollamaErr.message);
+      }
     }
 
     // Nothing worked
     activeBackend = null;
-    showStatus("error", "No AI Backend Found", getErrorMessage());
+    showStatus("error", errorTitle(), getErrorMessage());
+  }
+
+  // ===================== EDITION UI =====================
+  function applyEditionUI() {
+    ollamaSettings.classList.toggle("hidden", !ollamaEnabled);
+    ollamaSettingsLabel.textContent = nanoEnabled
+      ? "Ollama Fallback (for non-Chrome browsers)"
+      : "Ollama";
+
+    if (nanoEnabled && !ollamaEnabled) document.title = "MyLocalAI — Gemini Nano";
+    else if (ollamaEnabled && !nanoEnabled) document.title = "MyLocalAI — Ollama";
+    else document.title = "MyLocalAI — Local AI Chat";
+  }
+
+  function initStatusMessage() {
+    if (nanoEnabled && !ollamaEnabled) return "Checking Gemini Nano availability";
+    if (ollamaEnabled && !nanoEnabled) return "Connecting to Ollama";
+    return "Looking for an available AI backend";
+  }
+
+  function errorTitle() {
+    if (nanoEnabled && !ollamaEnabled) return "Gemini Nano Not Available";
+    if (ollamaEnabled && !nanoEnabled) return "Can't Reach Ollama";
+    return "No AI Backend Found";
   }
 
   // ===================== BACKEND UI =====================
@@ -437,7 +489,7 @@ Always prefer structured output over plain paragraphs.`;
         clearAttachedImage();
       }
     } else if (activeBackend === "ollama") {
-      const model = ollamaModelInput.value || "gemma3:1b";
+      const model = getOllamaModel();
       const statusText = isOllamaModelValid ? "" : " ⚠️ (Not a locall model)";
       headerBadge.textContent = `Ollama · ${model}${statusText}`;
       headerBadge.style.color = isOllamaModelValid ? "" : "#F87171";
@@ -597,8 +649,8 @@ Always prefer structured output over plain paragraphs.`;
 
   // ===================== OLLAMA BACKEND =====================
   async function initOllamaSession() {
-    const baseUrl = ollamaUrlInput.value.trim() || "http://localhost:11434";
-    const model = ollamaModelInput.value.trim() || "gemma3:1b";
+    const baseUrl = getOllamaUrl();
+    const model = getOllamaModel();
 
     // Test connection — hit the /api/tags endpoint
     let resp;
@@ -694,8 +746,8 @@ Always prefer structured output over plain paragraphs.`;
   }
 
   async function ollamaPromptStreaming(text, signal, attachedImage = null) {
-    const baseUrl = ollamaUrlInput.value.trim() || "http://localhost:11434";
-    const model = ollamaModelInput.value.trim() || "gemma3:1b";
+    const baseUrl = getOllamaUrl();
+    const model = getOllamaModel();
     const systemPrompt = sysPromptEl.value.trim() || DEFAULT_SYSTEM_PROMPT;
 
     // Build messages array for multi-turn conversation. sendMessage() already
@@ -1322,25 +1374,41 @@ Always prefer structured output over plain paragraphs.`;
   }
 
   function getErrorMessage() {
-    const extensionOrigin = typeof chrome !== "undefined" && chrome.runtime?.id
-      ? `chrome-extension://${chrome.runtime.id}`
-      : "chrome-extension://<your-extension-id>";
+    // Ollama-only edition: Ollama is the only thing that can be wrong.
+    if (!nanoEnabled) return ollamaHelpLines().join("\n");
 
-    if (browserName !== "chrome") {
+    // Nano-only edition on a non-Chrome browser: point to the Ollama edition.
+    if (!ollamaEnabled && browserName !== "chrome") {
+      return [
+        `You're using ${capitalize(browserName)}. Gemini Nano is built into Google Chrome (desktop) only.`,
+        "",
+        "Open this extension in Google Chrome, or install the",
+        "MyLocalAI Ollama edition, which works in any Chromium browser.",
+        "",
+        `Details: ${lastNanoError || "unknown"}`,
+      ].join("\n");
+    }
+
+    // Mixed edition on a non-Chrome browser: Ollama was the realistic option.
+    if (ollamaEnabled && browserName !== "chrome") {
       return [
         `You're using ${capitalize(browserName)} (Gemini Nano is Chrome-only).`,
         "",
         "Failed to connect to local Ollama fallback.",
         "",
-        "Make sure Ollama is running and CORS allows this extension:",
-        "1. Open Terminal",
-        `2. Run: launchctl setenv OLLAMA_ORIGINS "${extensionOrigin}"`,
-        "3. Restart the Ollama desktop app",
-        "4. Click Retry below",
+        ...ollamaHelpLines(),
       ].join("\n");
     }
 
-    // Chrome but API not enabled
+    // Chrome but Nano not available
+    const lines = nanoHelpLines();
+    if (ollamaEnabled) {
+      lines.push("", "Alternatively, start Ollama locally and click Retry.");
+    }
+    return lines.join("\n");
+  }
+
+  function nanoHelpLines() {
     return [
       lastNanoError === "NANO_NEEDS_GESTURE"
         ? "Gemini Nano is ready to download. Click Retry to start the download."
@@ -1353,7 +1421,22 @@ Always prefer structured output over plain paragraphs.`;
       "4. Needs ~22 GB free disk, >4 GB VRAM or 16 GB RAM + 4 cores, unmetered network",
       "5. In DevTools run: await LanguageModel.availability()",
       "   (\"downloadable\" needs a click/user gesture, then Retry)",
-    ].join("\n");
+    ];
+  }
+
+  function ollamaHelpLines() {
+    const extensionOrigin = typeof chrome !== "undefined" && chrome.runtime?.id
+      ? `chrome-extension://${chrome.runtime.id}`
+      : "chrome-extension://<your-extension-id>";
+
+    return [
+      "Make sure Ollama is running and CORS allows this extension:",
+      "1. Open Terminal",
+      `2. Run: launchctl setenv OLLAMA_ORIGINS "${extensionOrigin}"`,
+      "   (Windows/Linux: see the README)",
+      "3. Restart the Ollama desktop app",
+      "4. Click Retry below",
+    ];
   }
 
   function capitalize(s) {
@@ -1497,7 +1580,7 @@ Always prefer structured output over plain paragraphs.`;
     });
 
     async function validateSettingsModel() {
-      const baseUrl = ollamaUrlInput.value.trim() || "http://localhost:11434";
+      const baseUrl = getOllamaUrl();
       const model = ollamaModelInput.value.trim();
       if (!model) return;
 
@@ -1564,7 +1647,7 @@ Always prefer structured output over plain paragraphs.`;
     btnSettings.addEventListener("click", () => {
       historyPanel.classList.add("hidden");
       settingsPanel.classList.toggle("hidden");
-      if (!settingsPanel.classList.contains("hidden")) {
+      if (ollamaEnabled && !settingsPanel.classList.contains("hidden")) {
         validateSettingsModel();
       }
     });
