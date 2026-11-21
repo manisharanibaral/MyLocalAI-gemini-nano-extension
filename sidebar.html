@@ -130,6 +130,18 @@
         </div>
       </div>
       <div class="settings-group">
+        <span class="settings-label" id="response-count-label">Responses at once</span>
+        <!-- Radio inputs styled as a segmented control; sidebar.js reads the checked value. -->
+        <div class="segmented" role="radiogroup" aria-labelledby="response-count-label">
+          <label><input type="radio" name="response-count" value="1" checked /><span>1</span></label>
+          <label><input type="radio" name="response-count" value="2" /><span>2</span></label>
+          <label><input type="radio" name="response-count" value="3" /><span>3</span></label>
+          <label><input type="radio" name="response-count" value="4" /><span>4</span></label>
+          <label><input type="radio" name="response-count" value="5" /><span>5</span></label>
+        </div>
+        <p class="settings-hint">Generates several answers in parallel so you can pick the best one. More answers use more memory and take longer.</p>
+      </div>
+      <div class="settings-group">
         <label class="settings-label" for="idle-unload">Free memory when idle</label>
         <select id="idle-unload" class="settings-input">
           <option value="0">Default (until Chrome quits)</option>

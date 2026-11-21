@@ -574,6 +574,90 @@ html, body {
 }
 .msg-action-btn:hover, .msg-action-btn.speaking { opacity: 1; }
 
+/* Multi-answer reply: label + numbered tabs on one line, one pane per answer. */
+.variant-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.variant-tabs {
+  display: inline-flex;
+  gap: 2px;
+  padding: 2px;
+  border-radius: var(--radius-sm);
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-subtle);
+}
+.variant-tab {
+  position: relative;
+  min-width: 24px;
+  height: 22px;
+  padding: 0 6px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-secondary);
+  font: 600 11px var(--font);
+  cursor: pointer;
+  transition: background var(--duration), color var(--duration);
+}
+.variant-tab:hover { color: var(--text-primary); }
+.variant-tab.active { background: var(--accent-grad); color: #fff; }
+.variant-tab:focus-visible { outline: 2px solid var(--border-focus); outline-offset: 1px; }
+/* Small dot while that answer is still streaming; red text if it failed. */
+.variant-tab.streaming::after {
+  content: "";
+  position: absolute;
+  top: 3px;
+  right: 3px;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--accent-to);
+  animation: variant-pulse 1s ease-in-out infinite;
+}
+.variant-tab.failed:not(.active) { color: #F87171; }
+@keyframes variant-pulse { 50% { opacity: 0.3; } }
+.variant-pane { display: flex; flex-direction: column; gap: 4px; }
+.msg.ai.multi .msg-bubble { border-top-left-radius: 4px; }
+
+/* "Responses at once": radio buttons drawn as a segmented control. */
+.segmented {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 2px;
+  padding: 2px;
+  border-radius: var(--radius-sm);
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-subtle);
+}
+.segmented label { cursor: pointer; }
+.segmented input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+.segmented span {
+  display: block;
+  padding: 5px 0;
+  border-radius: 6px;
+  text-align: center;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  transition: background var(--duration), color var(--duration);
+}
+.segmented label:hover span { color: var(--text-primary); }
+.segmented input:checked + span { background: var(--accent-grad); color: #fff; }
+.segmented input:focus-visible + span { outline: 2px solid var(--border-focus); outline-offset: 1px; }
+.settings-hint {
+  margin: 0;
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--text-muted);
+}
+
 /* Thinking Block */
 .thinking-block {
   margin-bottom: 12px;

@@ -61,6 +61,7 @@
   const ollamaModelInput = $("#ollama-model");
   const ollamaUrlInput = $("#ollama-url");
   const idleUnloadSelect = $("#idle-unload");
+  const responseCountInputs = $$('input[name="response-count"]');
   const ollamaSettings = $("#ollama-settings");
   const ollamaSettingsLabel = $("#ollama-settings-label");
 
@@ -118,6 +119,28 @@
   const DEFAULT_IDLE_UNLOAD_MINUTES = 0;
   const getIdleUnloadMs = () => (parseInt(idleUnloadSelect.value, 10) || 0) * 60 * 1000;
 
+  // How many alternative answers one message generates in parallel ("Responses at once").
+  // Each extra answer is another full generation, so the cap keeps memory and wait bounded.
+  const DEFAULT_RESPONSE_COUNT = 1;
+  const MAX_RESPONSE_COUNT = 5;
+  let nanoVariantSessions = []; // per-answer Nano sessions of the latest multi-answer reply
+
+  function clampResponseCount(value) {
+    const n = parseInt(value, 10);
+    if (!Number.isFinite(n)) return DEFAULT_RESPONSE_COUNT;
+    return Math.min(MAX_RESPONSE_COUNT, Math.max(1, n));
+  }
+
+  function getResponseCount() {
+    const checked = [...responseCountInputs].find(input => input.checked);
+    return clampResponseCount(checked?.value);
+  }
+
+  function setResponseCount(value) {
+    const count = String(clampResponseCount(value));
+    responseCountInputs.forEach(input => { input.checked = input.value === count; });
+  }
+
   // Create span for model status in settings
   const modelStatusSpan = document.createElement("span");
   modelStatusSpan.style.fontSize = "11px";
@@ -166,8 +189,11 @@ Always prefer structured output over plain paragraphs.`;
     ollamaModelInput.value = ollamaModelInput.placeholder = DEFAULT_OLLAMA_MODEL;
     ollamaUrlInput.value = ollamaUrlInput.placeholder = DEFAULT_OLLAMA_URL;
     idleUnloadSelect.value = String(DEFAULT_IDLE_UNLOAD_MINUTES);
+    setResponseCount(DEFAULT_RESPONSE_COUNT);
 
     try {
+      const savedCount = localStorage.getItem("responseCount");
+      if (savedCount !== null) setResponseCount(savedCount);
       const savedIdle = localStorage.getItem("idleUnloadMinutes");
       if (savedIdle !== null && [...idleUnloadSelect.options].some(o => o.value === savedIdle)) {
         idleUnloadSelect.value = savedIdle;
@@ -216,6 +242,7 @@ Always prefer structured output over plain paragraphs.`;
       localStorage.setItem("ollamaModel", ollamaModelInput.value);
       localStorage.setItem("ollamaUrl", ollamaUrlInput.value);
       localStorage.setItem("idleUnloadMinutes", idleUnloadSelect.value);
+      localStorage.setItem("responseCount", String(getResponseCount()));
     } catch (e) {
       console.warn("[MyLocalAI] Could not save settings", e);
     }
@@ -319,6 +346,10 @@ Always prefer structured output over plain paragraphs.`;
         let displayContent = msg.content;
         if (msg.role === "user" && displayContent.includes("User Question:\n")) {
           displayContent = displayContent.split("User Question:\n")[1];
+        }
+        if (msg.role === "assistant" && msg.variants?.length > 1) {
+          appendSavedResponseGroup(msg);
+          return;
         }
         appendMessage(role, displayContent, false, msg.reasoning);
       }
@@ -698,11 +729,49 @@ Always prefer structured output over plain paragraphs.`;
       await initNanoSession();
       return;
     }
+    releaseNanoVariantSessions();
     try { session?.destroy(); } catch (_) { }
     session = await cloneNanoBaseSession();
   }
 
+  // ── Multi-answer replies ──
+  // One session runs one prompt at a time, so each parallel answer gets its own clone of the
+  // chat session. Clones are taken before prompting, so every answer sees the same chat so far.
+  // Older Chrome builds without clone() (or a failed clone) simply produce fewer answers.
+  async function createNanoVariantSessions(count) {
+    releaseNanoVariantSessions();
+    const sessions = [session];
+    while (sessions.length < count && typeof session?.clone === "function") {
+      try {
+        const clone = await session.clone();
+        watchNanoContextOverflow(clone);
+        sessions.push(clone);
+      } catch (err) {
+        console.warn("[MyLocalAI] Could not clone Nano session for an extra answer:", err.message);
+        break;
+      }
+    }
+    nanoVariantSessions = sessions;
+    return sessions;
+  }
+
+  // The chat continues from the selected answer, so its session becomes the chat session.
+  // The others stay alive until the next message, in case the user switches answers.
+  function adoptNanoVariant(index) {
+    const chosen = nanoVariantSessions[index];
+    if (chosen) session = chosen;
+  }
+
+  function releaseNanoVariantSessions() {
+    for (const s of nanoVariantSessions) {
+      if (s === session) continue;
+      try { s?.destroy(); } catch (_) { }
+    }
+    nanoVariantSessions = [];
+  }
+
   function destroyNanoSessions() {
+    releaseNanoVariantSessions();
     // The base session can be the same object as the chat session (no-clone fallback).
     for (const s of new Set([session, nanoBaseSession])) {
       try { s?.destroy(); } catch (_) { }
@@ -903,7 +972,10 @@ Always prefer structured output over plain paragraphs.`;
           const parts = m.content.split("__IMG__");
           return { role: m.role, content: parts[0], images: parts[1] ? [parts[1]] : undefined };
         }
-        return m;
+        // Only the selected answer (already in `content`) belongs in the prompt;
+        // the unused alternatives would just waste the model's context.
+        const { variants, selected, ...message } = m;
+        return message;
       }),
     ];
 
@@ -1101,33 +1173,26 @@ Always prefer structured output over plain paragraphs.`;
     // Clear image immediately from UI after sending
     clearAttachedImage();
 
-    const aiBubble = appendMessage("ai", "", true);
-
     try {
       abortController = new AbortController();
+      // All answers share one AbortController, so Stop ends every stream at once.
+      const nanoSessions = activeBackend === "nano"
+        ? await createNanoVariantSessions(getResponseCount())
+        : null;
+      const answerCount = nanoSessions ? nanoSessions.length : getResponseCount();
+      const group = appendResponseGroup(answerCount);
 
-      if (activeBackend === "nano") {
-        await streamNano(finalPrompt, aiBubble, imageToSend);
-      } else if (activeBackend === "ollama") {
-        await streamOllama(finalPrompt, aiBubble, imageToSend);
-      }
+      const results = await Promise.allSettled(group.bubbles.map((bubble, i) => {
+        const stream = activeBackend === "nano"
+          ? streamNano(finalPrompt, bubble, imageToSend, nanoSessions[i])
+          : streamOllama(finalPrompt, bubble, imageToSend);
+        return stream.finally(() => group.markDone(i));
+      }));
+      await recordResponses(group, results);
     } catch (err) {
-      if (err.name === "AbortError") {
-        // preserve the text and any reasoning blocks
-        aiBubble.dataset.done = "1";
-        aiBubble.style.minHeight = "";
-        const currentHtml = aiBubble.innerHTML.replace('<span class="cursor">\u200B</span>', "");
-        setSafeHtml(aiBubble, currentHtml || "(Generation stopped)");
-      } else if (activeBackend === "nano") {
-        console.error("[MyLocalAI] Nano prompt error:", err);
-        const removed = await recoverIfNanoModelRemoved();
-        finalizeMessage(aiBubble, removed
-          ? "⚠️ Chrome removed the Gemini Nano model (usually to free disk space).\n\nSend your message again to download it again."
-          : describeNanoPromptError(err));
-      } else {
-        console.error("[MyLocalAI] Prompt error:", err);
-        finalizeMessage(aiBubble, `⚠️ Error: ${err.message}`);
-      }
+      // Only reached if setting up the reply fails; per-answer errors are shown in their tab.
+      console.error("[MyLocalAI] Could not start the reply:", err);
+      appendMessage("ai", `⚠️ Error: ${err.message}`);
     } finally {
       isGenerating = false;
       abortController = null;
@@ -1139,19 +1204,77 @@ Always prefer structured output over plain paragraphs.`;
     }
   }
 
+  // Shows each answer's outcome and stores the reply in history. The chat continues from the
+  // first answer that succeeded; the user can switch to another one with the tabs.
+  async function recordResponses(group, results) {
+    const variants = [];
+    for (let i = 0; i < results.length; i++) {
+      const result = results[i];
+      if (result.status === "fulfilled") {
+        variants.push(result.value);
+      } else {
+        const errorText = await showResponseError(group.bubbles[i], result.reason);
+        group.markFailed(i);
+        variants.push({ content: errorText, reasoning: "", failed: true });
+      }
+    }
+
+    const selected = variants.findIndex(v => !v.failed);
+    if (selected === -1) return; // nothing usable (all failed or stopped), as before
+
+    const entry = { role: "assistant", content: variants[selected].content, reasoning: variants[selected].reasoning };
+    if (variants.length > 1) {
+      entry.variants = variants;
+      entry.selected = selected;
+    }
+    chatHistory.push(entry);
+    group.setActive(selected);
+    bindVariantSelection(group, entry);
+    if (activeBackend === "nano") adoptNanoVariant(selected);
+    saveConversation();
+  }
+
+  // Renders a failed or stopped answer in its bubble and returns the text that was shown.
+  async function showResponseError(bubble, err) {
+    if (err?.name === "AbortError") {
+      // Preserve the streamed text and any reasoning blocks.
+      bubble.dataset.done = "1";
+      bubble.style.minHeight = "";
+      const currentHtml = bubble.innerHTML.replace('<span class="cursor">​</span>', "");
+      setSafeHtml(bubble, currentHtml || "(Generation stopped)");
+      bubble.parentElement?.querySelector(".msg-actions")?.classList.remove("hidden");
+      return getResponseText(bubble) || "(Generation stopped)";
+    }
+
+    let message;
+    if (activeBackend === "nano") {
+      console.error("[MyLocalAI] Nano prompt error:", err);
+      const removed = await recoverIfNanoModelRemoved();
+      message = removed
+        ? "⚠️ Chrome removed the Gemini Nano model (usually to free disk space).\n\nSend your message again to download it again."
+        : describeNanoPromptError(err);
+    } else {
+      console.error("[MyLocalAI] Prompt error:", err);
+      message = `⚠️ Error: ${err?.message}`;
+    }
+    finalizeMessage(bubble, message);
+    return message;
+  }
+
   // ── Nano streaming ──
-  async function streamNano(text, aiBubble, attachedImage = null) {
+  // Returns the answer; recordResponses() stores it, because one reply may hold several answers.
+  async function streamNano(text, aiBubble, attachedImage = null, chatSession = session) {
     const prompt = attachedImage
       ? [{
           role: "user",
           content: [
             { type: "text", value: text },
-            { type: "image", value: base64ToImageBlob(attachedImage) },
+            { type: "image", value: await padImageToSquare(base64ToImageBlob(attachedImage)) },
           ],
         }]
       : text;
 
-    const stream = await session.promptStreaming(prompt, {
+    const stream = await chatSession.promptStreaming(prompt, {
       signal: abortController.signal,
     });
 
@@ -1163,9 +1286,7 @@ Always prefer structured output over plain paragraphs.`;
     }
 
     finalizeMessage(aiBubble, fullText);
-    chatHistory.push({ role: "assistant", content: fullText });
-    saveConversation();
-    updateTokenInfo();
+    return { content: fullText, reasoning: "" };
   }
 
   // ── Ollama streaming ──
@@ -1267,8 +1388,7 @@ Always prefer structured output over plain paragraphs.`;
     }
 
     finalizeMessage(aiBubble, fullText, reasoningText);
-    chatHistory.push({ role: "assistant", content: fullText, reasoning: reasoningText });
-    saveConversation();
+    return { content: fullText, reasoning: reasoningText };
   }
 
   function stopGeneration() {
@@ -1319,6 +1439,107 @@ Always prefer structured output over plain paragraphs.`;
     messagesEl.appendChild(msg);
     scrollToBottom(true);
     return bubble;
+  }
+
+  // ── Multi-answer replies ("Responses at once") ──
+  // A reply is a "group" of one or more answer bubbles. With one answer it is a normal message;
+  // with several, one message holds numbered tabs and one pane (bubble + actions) per answer,
+  // so N answers take the space of one instead of stacking down the chat.
+  function appendResponseGroup(count) {
+    if (count <= 1) return singleResponseGroup(appendMessage("ai", "", true));
+
+    const msg = document.createElement("div");
+    msg.className = "msg ai multi";
+
+    const header = document.createElement("div");
+    header.className = "variant-header";
+    const label = document.createElement("div");
+    label.className = "msg-label";
+    label.textContent = "MyLocalAI";
+    const tabs = document.createElement("div");
+    tabs.className = "variant-tabs";
+    tabs.setAttribute("role", "tablist");
+    tabs.setAttribute("aria-label", "Answers");
+    header.append(label, tabs);
+    msg.appendChild(header);
+
+    const group = { bubbles: [], tabs: [], panes: [], onSelect: null };
+    for (let i = 0; i < count; i++) {
+      const tab = document.createElement("button");
+      tab.type = "button";
+      tab.className = "variant-tab streaming";
+      tab.setAttribute("role", "tab");
+      tab.textContent = String(i + 1);
+      tab.title = `Answer ${i + 1} of ${count}. The chat continues from the selected answer.`;
+      tab.addEventListener("click", () => {
+        group.setActive(i);
+        group.onSelect?.(i);
+      });
+
+      const pane = document.createElement("div");
+      pane.className = "variant-pane";
+      pane.setAttribute("role", "tabpanel");
+      const bubble = document.createElement("div");
+      bubble.className = "msg-bubble";
+      bubble.innerHTML = `<span class="typing-indicator"><span class="dot"></span><span class="dot"></span><span class="dot"></span></span>`;
+      pane.append(bubble, createResponseActions(bubble, false));
+
+      tabs.appendChild(tab);
+      msg.appendChild(pane);
+      group.tabs.push(tab);
+      group.panes.push(pane);
+      group.bubbles.push(bubble);
+    }
+
+    group.setActive = (index) => {
+      group.tabs.forEach((tab, i) => {
+        tab.classList.toggle("active", i === index);
+        tab.setAttribute("aria-selected", String(i === index));
+      });
+      group.panes.forEach((pane, i) => pane.classList.toggle("hidden", i !== index));
+    };
+    group.markDone = (index) => group.tabs[index].classList.remove("streaming");
+    group.markFailed = (index) => group.tabs[index].classList.add("failed");
+
+    group.setActive(0);
+    messagesEl.appendChild(msg);
+    scrollToBottom(true);
+    return group;
+  }
+
+  // Same interface as a multi-answer group, so sendMessage() needs no special case.
+  function singleResponseGroup(bubble) {
+    return { bubbles: [bubble], onSelect: null, setActive() { }, markDone() { }, markFailed() { } };
+  }
+
+  // Rebuilds a saved multi-answer reply with its tabs and selected answer.
+  function appendSavedResponseGroup(entry) {
+    const group = appendResponseGroup(entry.variants.length);
+    entry.variants.forEach((variant, i) => {
+      finalizeMessage(group.bubbles[i], variant.content, variant.reasoning);
+      group.markDone(i);
+      if (variant.failed) group.markFailed(i);
+    });
+    group.setActive(entry.selected ?? 0);
+    bindVariantSelection(group, entry);
+  }
+
+  // Switching tabs changes which answer the history entry keeps (and so what the model sees
+  // next). Nano's per-answer sessions only exist for the latest reply, so only it moves Nano.
+  function bindVariantSelection(group, entry) {
+    if (!entry.variants) return;
+    group.onSelect = (index) => {
+      const variant = entry.variants[index];
+      if (!variant || variant.failed || !chatHistory.includes(entry)) return;
+      entry.selected = index;
+      entry.content = variant.content;
+      entry.reasoning = variant.reasoning;
+      if (activeBackend === "nano" && entry === chatHistory[chatHistory.length - 1]) {
+        adoptNanoVariant(index);
+        updateTokenInfo();
+      }
+      saveConversation();
+    };
   }
 
   // ===================== RESPONSE ACTIONS (copy / speak) =====================
@@ -1510,6 +1731,35 @@ Always prefer structured output over plain paragraphs.`;
       bytes[i] = binary.charCodeAt(i);
     }
     return new Blob([bytes], { type: "image/jpeg" });
+  }
+
+  // squashes every image into a square, so a wide screenshot gets its
+  // text distorted (Chrome logs "Image input will be stretched..."). Letterboxing it
+  // onto a square canvas keeps the original proportions. Only the copy sent to Nano
+  // is padded; the preview, saved history and Ollama keep the original image.
+  async function padImageToSquare(imageBlob) {
+    const bitmap = await createImageBitmap(imageBlob);
+    const { width, height } = bitmap;
+    if (width === height) {
+      bitmap.close();
+      return imageBlob;
+    }
+
+    const side = Math.max(width, height);
+    const canvas = document.createElement("canvas");
+    canvas.width = side;
+    canvas.height = side;
+    const ctx = canvas.getContext("2d");
+    // White bars: JPEG has no transparency, and most screenshots are light.
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(0, 0, side, side);
+    ctx.drawImage(bitmap, Math.round((side - width) / 2), Math.round((side - height) / 2));
+    bitmap.close();
+
+    return new Promise((resolve) => {
+      // Fall back to the unpadded image rather than failing the whole prompt.
+      canvas.toBlob((blob) => resolve(blob || imageBlob), "image/jpeg", 0.85);
+    });
   }
 
   function getImageFileFromItems(items) {
@@ -1967,6 +2217,8 @@ Always prefer structured output over plain paragraphs.`;
 
     tempSlider.addEventListener("input", () => { tempValue.textContent = tempSlider.value; });
     topkSlider.addEventListener("input", () => { topkValue.textContent = topkSlider.value; });
+    // Read at send time, so it takes effect without "Apply & Restart".
+    responseCountInputs.forEach(input => input.addEventListener("change", saveSettings));
 
     btnApply.addEventListener("click", () => {
       saveSettings();
