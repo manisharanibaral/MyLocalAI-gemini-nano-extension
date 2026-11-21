@@ -113,8 +113,9 @@
   const MAX_CHAT_MESSAGES = 100;
   const MAX_SAVED_SESSIONS = 50;
   // The model stays in RAM for as long as a session/loaded model exists, so release it when idle.
-  // The user picks the delay in settings (minutes; 0 = never unload).
-  const DEFAULT_IDLE_UNLOAD_MINUTES = 5;
+  // The user picks the delay in settings (minutes). 0 is the default: never unload while the
+  // panel is open, matching Chrome's own behaviour (Chrome only frees it after the panel closes).
+  const DEFAULT_IDLE_UNLOAD_MINUTES = 0;
   const getIdleUnloadMs = () => (parseInt(idleUnloadSelect.value, 10) || 0) * 60 * 1000;
 
   // Create span for model status in settings
@@ -689,7 +690,11 @@ Always prefer structured output over plain paragraphs.`;
 
   // Fresh Nano context for a new or reloaded chat without reloading the model.
   async function resetNanoChat() {
-    if (!nanoBaseSession || isModelUnloaded) {
+    // After an idle unload there is no context to reset. Reloading here (e.g. on "New chat")
+    // would pull the model back into RAM with no idle timer running, so it would never be
+    // freed again; the next send reloads it through ensureModelLoaded() instead.
+    if (isModelUnloaded) return;
+    if (!nanoBaseSession) {
       await initNanoSession();
       return;
     }
@@ -992,7 +997,9 @@ Always prefer structured output over plain paragraphs.`;
       await unloadOllamaModel();
     }
     isModelUnloaded = true;
-    console.log("[MyLocalAI] Model unloaded after idle period.");
+    // Chrome frees Nano's RAM only once no session is alive, and then waits its own idle delay
+    // (about 1 minute in Chromium's on_device_model_idle_timeout) before the model process exits.
+    console.log("[MyLocalAI] Model released after idle period; Chrome frees the memory shortly after.");
   }
 
   // Ollama keeps a model resident for its own keep_alive window; keep_alive: 0 evicts it now.
@@ -1066,6 +1073,8 @@ Always prefer structured output over plain paragraphs.`;
           appendMessage("ai", "✅ Session reset. Please re-send your message.");
           scrollToBottom(true);
           hideStatus();
+          // ensureModelLoaded() stopped the idle timer; this early return skips the finally below.
+          scheduleIdleUnload();
           return;
         }
       } catch (_) { /* skip check */ }

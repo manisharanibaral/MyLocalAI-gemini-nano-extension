@@ -154,7 +154,8 @@ assert.match(sidebarCss, /\.msg\.ai\s*\{\s*margin-bottom/, "AI responses should 
 
 // Idle unload: the model must be released when idle and brought back on the next send.
 assert.match(sidebarHtml, /<select id="idle-unload"/, "settings should offer an idle-unload dropdown");
-assert.match(sidebarHtml, /<select id="idle-unload"[\s\S]*?<option value="0">Never/, "idle-unload dropdown should include Never");
+assert.match(sidebarHtml, /<select id="idle-unload"[\s\S]*?<option value="0">Default \(until Chrome quits\)/, "idle-unload dropdown should include the Default (never unload) option");
+assert.match(sidebarJs, /const DEFAULT_IDLE_UNLOAD_MINUTES = 0;/, "keeping the model loaded (value 0) should be the default idle-unload choice");
 assert.match(functionBody(sidebarJs, "saveSettings"), /idleUnloadMinutes/, "idle-unload choice should be saved");
 assert.match(functionBody(sidebarJs, "loadSettings"), /idleUnloadMinutes/, "idle-unload choice should be restored");
 assert.match(functionBody(sidebarJs, "scheduleIdleUnload"), /delayMs\s*===\s*0/, "choosing Never should not schedule an unload");
@@ -198,7 +199,20 @@ assert.match(functionBody(sidebarJs, "cloneNanoBaseSession"), /watchNanoContextO
 assert.match(functionBody(sidebarJs, "startNewChat"), /resetNanoChat\(\)/, "New chat should clone the base session instead of recreating it");
 assert.equal(/initNanoSession/.test(functionBody(sidebarJs, "startNewChat")), false, "New chat should not reload the model");
 assert.match(functionBody(sidebarJs, "loadConversation"), /resetNanoChat\(\)/, "loading a saved chat should reset Nano's context via a clone");
-assert.match(functionBody(sidebarJs, "resetNanoChat"), /isModelUnloaded[\s\S]*initNanoSession\(\)/, "resetNanoChat should fall back to a full init when no base exists");
+assert.match(functionBody(sidebarJs, "resetNanoChat"), /!nanoBaseSession\)\s*\{\s*await initNanoSession\(\)/, "resetNanoChat should fall back to a full init when no base exists");
+// After an idle unload, New chat / loading a chat must not pull the model back into RAM:
+// nothing would restart the idle timer, so the model would stay loaded forever.
+assert.match(
+  functionBody(sidebarJs, "resetNanoChat"),
+  /if \(isModelUnloaded\) return;[\s\S]*initNanoSession\(\)/,
+  "resetNanoChat must leave an idle-unloaded model unloaded (the next send reloads it)"
+);
+// Every early return from sendMessage after ensureModelLoaded() must restart the idle timer.
+{
+  const sendBody = functionBody(sidebarJs, "sendMessage");
+  const contextLimitBranch = sendBody.slice(sendBody.indexOf("Session reset. Please re-send"), sendBody.indexOf("// Show UI"));
+  assert.match(contextLimitBranch, /scheduleIdleUnload\(\)[\s\S]*return;/, "context-limit reset should restart the idle timer before returning");
+}
 assert.match(functionBody(sidebarJs, "destroyNanoSessions"), /nanoBaseSession/, "destroyNanoSessions must also destroy the base session");
 assert.match(functionBody(sidebarJs, "destroySession"), /destroyNanoSessions\(\)/, "idle unload/restart should release the base session too");
 assert.match(functionBody(sidebarJs, "watchNanoContextOverflow"), /"contextoverflow"/, "Nano context overflow should be surfaced");
