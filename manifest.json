@@ -1,0 +1,33 @@
+{
+  "manifest_version": 3,
+  "name": "MyLocalAI",
+  "version": "1.1.0",
+  "description": "Chat privately with on-device AI. Uses Gemini Nano on Chrome or Ollama on any browser. 100% local, zero cloud.",
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+  "permissions": [
+    "sidePanel",
+    "contextMenus"
+  ],
+  "host_permissions": [
+    "http://localhost:11434/*",
+    "http://127.0.0.1:11434/*"
+  ],
+  "side_panel": {
+    "default_path": "sidebar.html"
+  },
+  "action": {
+    "default_title": "Open MyLocalAI Chat",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "48": "icons/icon48.png"
+    }
+  },
+  "background": {
+    "service_worker": "background.js"
+  },
+  "minimum_chrome_version": "120"
+}
