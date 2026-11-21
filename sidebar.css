@@ -523,7 +523,8 @@ html, body {
   letter-spacing: 0.06em;
   padding: 0 2px;
 }
-.msg.user .msg-label { color: var(--accent-from); }
+/* "You" sits directly above the right-aligned prompt bubble. */
+.msg.user .msg-label { color: var(--accent-from); align-self: flex-end; }
 .msg.ai .msg-label   { color: var(--accent-to); }
 
 .msg-bubble {
@@ -552,6 +553,26 @@ html, body {
   border: 1px solid var(--border-subtle);
   border-bottom-left-radius: 4px;
 }
+
+/* Copy / Hear buttons under a response, plus breathing room before the next message. */
+.msg.ai { margin-bottom: 12px; }
+.msg-actions {
+  display: flex;
+  gap: 6px;
+  margin-top: 4px;
+}
+.msg-actions.hidden { display: none; }
+.msg-action-btn {
+  background: transparent;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  color: inherit;
+  opacity: 0.7;
+  font-size: 11px;
+  padding: 3px 10px;
+  cursor: pointer;
+}
+.msg-action-btn:hover, .msg-action-btn.speaking { opacity: 1; }
 
 /* Thinking Block */
 .thinking-block {

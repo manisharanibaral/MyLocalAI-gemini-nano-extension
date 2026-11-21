@@ -117,4 +117,39 @@ assert.match(
   "DOMPurify should be updated to the fixed 3.4.0 build"
 );
 
+// Response actions: copy + hear buttons, revealed only after streaming ends.
+assert.match(
+  functionBody(sidebarJs, "appendMessage"),
+  /createResponseActions\(bubble, !streaming\)/,
+  "AI messages should get copy/hear actions, hidden while streaming"
+);
+assert.match(
+  functionBody(sidebarJs, "finalizeMessage"),
+  /msg-actions[\s\S]*classList\.remove\("hidden"\)/,
+  "finalizeMessage should reveal the response actions"
+);
+assert.match(
+  functionBody(sidebarJs, "toggleSpeech"),
+  /chrome\.tts\.speak/,
+  "Hear button should use chrome.tts"
+);
+// Speech quality: explicit natural voice + markdown stripped before speaking.
+assert.match(
+  functionBody(sidebarJs, "toggleSpeech"),
+  /voiceName:\s*preferredVoiceName[\s\S]*cleanTextForSpeech|cleanTextForSpeech[\s\S]*voiceName:\s*preferredVoiceName/,
+  "Hear button should pass a chosen voice and cleaned text"
+);
+assert.match(functionBody(sidebarJs, "scoreVoice"), /natural[\s\S]*google/i, "voice picker should favour natural/Google voices");
+assert.match(functionBody(sidebarJs, "cleanTextForSpeech"), /https\?/, "speech text should replace URLs");
+assert.match(sidebarJs, /\n  loadPreferredVoice\(\);/, "voices should be loaded at startup");
+assert.match(
+  functionBody(sidebarJs, "copyResponse"),
+  /navigator\.clipboard\.writeText/,
+  "Copy button should write to the clipboard"
+);
+assert.ok(manifestJson.permissions.includes("tts"), "manifest needs the tts permission for chrome.tts");
+const sidebarCss = read("sidebar.css");
+assert.match(sidebarCss, /\.msg\.user \.msg-label\s*\{[^}]*align-self:\s*flex-end/, "You label should align over the prompt");
+assert.match(sidebarCss, /\.msg\.ai\s*\{\s*margin-bottom/, "AI responses should have bottom margin");
+
 console.log("Regression checks passed");

@@ -10,7 +10,8 @@
   },
   "permissions": [
     "sidePanel",
-    "contextMenus"
+    "contextMenus",
+    "tts"
   ],
   "host_permissions": [
     "http://localhost:11434/*",
