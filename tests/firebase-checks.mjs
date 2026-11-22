@@ -128,7 +128,8 @@ assert.ok(sidebarJs.indexOf("function streamOllama(") < sidebarJs.indexOf("funct
   const sandbox = { window: {}, console };
   vm.runInNewContext(backendJs, sandbox);
   const provider = sandbox.window.MYLOCALAI_PROVIDERS.firebase;
-  for (const method of ["init", "stream", "unload", "describe", "supportsImages", "statusLine", "errorTitle", "helpLines", "bindSettingsUI"]) {
+  for (const method of ["init", "stream", "unload", "describe", "supportsImages", "statusLine", "errorTitle", "helpLines", "bindSettingsUI",
+    "listModels", "selectModel"]) {
     assert.equal(typeof provider[method], "function", `provider.${method} should exist`);
   }
   assert.equal(provider.id, "firebase");
@@ -153,6 +154,55 @@ assert.ok(sidebarJs.indexOf("function streamOllama(") < sidebarJs.indexOf("funct
 
   const huge = [{ role: "user", content: "x".repeat(20000) }, { role: "assistant", content: "ok" }, { role: "user", content: "q" }];
   assert.equal(build(huge).includes("x".repeat(100)), false, "turns past the character budget are dropped");
+}
+
+// ===== Prompt-bar model switcher: the provider lists its models and applies a choice =====
+{
+  const stored = new Map();
+  const routeSelect = { value: "", disabled: false };
+  const modelSelect = { value: "", disabled: false };
+  const sandbox = {
+    window: {},
+    console,
+    localStorage: { getItem: (key) => stored.get(key) ?? null, setItem: (key, value) => stored.set(key, value) },
+    document: { getElementById: (id) => ({ "firebase-route": routeSelect, "firebase-cloud-model": modelSelect })[id] ?? null },
+  };
+  vm.runInNewContext(backendJs, sandbox);
+  const provider = sandbox.window.MYLOCALAI_PROVIDERS.firebase;
+
+  let listing = provider.listModels();
+  assert.deepEqual([...listing.options.map((o) => o.id)], ["device", "cloud:fast", "cloud:frontier"], "on-device plus both cloud models");
+  assert.equal(listing.currentId, "device", "the default is on-device only");
+  assert.equal(listing.options[0].label, "Gemini Nano");
+  for (const cloud of listing.options.slice(1)) {
+    assert.match(cloud.detail, /☁️ Cloud/, "cloud choices are marked as cloud");
+    assert.match(cloud.detail, /sends messages to Google/, "cloud choices say what leaves the device");
+  }
+  assert.deepEqual([...listing.options.slice(1).map((o) => o.label)], ["gemini-3.5-flash-lite", "gemini-4-hydrogen"], "free-tier models only");
+
+  provider.selectModel("cloud:frontier");
+  assert.equal(stored.get("firebaseRoute"), "prefer-cloud", "picking a cloud model is an explicit cloud opt-in");
+  assert.equal(stored.get("firebaseCloudModel"), "frontier");
+  assert.equal(provider.listModels().currentId, "cloud:frontier");
+  assert.equal(routeSelect.value, "prefer-cloud", "the settings card follows the switcher");
+  assert.equal(modelSelect.value, "frontier");
+  assert.equal(modelSelect.disabled, false, "the cloud model select is usable on a cloud route");
+
+  provider.selectModel("device");
+  assert.equal(stored.get("firebaseRoute"), "device", "choosing Gemini Nano goes back to on-device only");
+  assert.equal(provider.listModels().currentId, "device");
+  assert.equal(routeSelect.value, "device");
+  assert.equal(modelSelect.disabled, true, "no cloud model to pick on the device route");
+
+  stored.set("firebaseRoute", "prefer-device");
+  listing = provider.listModels();
+  assert.equal(listing.currentId, "device", "device-first still counts as the Gemini Nano choice");
+  assert.match(listing.options[0].detail, /cloud fallback on/, "…and the menu says the fallback is on");
+
+  const before = new Map(stored);
+  assert.throws(() => provider.selectModel("cloud:bogus"), /Unknown model/);
+  assert.throws(() => provider.selectModel("nonsense"), /Unknown model/);
+  assert.deepEqual([...stored], [...before], "an unknown model changes nothing");
 }
 
 // ===== Pre-commit runs this file too =====

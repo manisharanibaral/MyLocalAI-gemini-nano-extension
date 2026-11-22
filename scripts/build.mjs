@@ -24,6 +24,7 @@ export const SHARED_FILES = [
   "sidebar.html",
   "sidebar.css",
   "sidebar.js",
+  "model-switcher.js",
   "purify.min.js",
   "marked.umd.js",
   "icons",

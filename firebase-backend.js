@@ -85,24 +85,31 @@
     if (settingsBound || !card || !routeSelect || !modelSelect) return;
     settingsBound = true;
     card.classList.remove("hidden");
-
-    routeSelect.value = currentRoute();
-    modelSelect.value = currentCloudModel();
-    const syncModelState = () => { modelSelect.disabled = !ROUTES[routeSelect.value].usesCloud; };
-    syncModelState();
+    syncSettingsControls();
 
     // Saved immediately; "Apply & Restart Session" (or Retry) rebuilds the model with them.
-    routeSelect.addEventListener("change", () => { storeSetting(STORAGE_KEYS.route, routeSelect.value); syncModelState(); });
+    routeSelect.addEventListener("change", () => { storeSetting(STORAGE_KEYS.route, routeSelect.value); syncSettingsControls(); });
     modelSelect.addEventListener("change", () => storeSetting(STORAGE_KEYS.cloudModel, modelSelect.value));
 
     $("btn-firebase-enable-cloud")?.addEventListener("click", () => {
       // The user explicitly opts in to the cloud fallback from the error overlay.
       storeSetting(STORAGE_KEYS.route, "prefer-device");
-      routeSelect.value = "prefer-device";
-      syncModelState();
+      syncSettingsControls();
       setCloudOptInVisible(false);
       $("status-retry-btn")?.click(); // Retry re-runs init() with the new route
     });
+  }
+
+  // Shows the stored route/model in the settings card. Also used after the prompt-bar model
+  // switcher changes them, so the two never disagree.
+  function syncSettingsControls() {
+    const routeSelect = $("firebase-route");
+    const modelSelect = $("firebase-cloud-model");
+    if (!routeSelect || !modelSelect) return;
+    routeSelect.value = currentRoute();
+    modelSelect.value = currentCloudModel();
+    // The cloud model only matters when the route can reach the cloud.
+    modelSelect.disabled = !ROUTES[currentRoute()].usesCloud;
   }
 
   function setCloudOptInVisible(visible) {
@@ -321,6 +328,42 @@
     cachedModel = null;
   }
 
+  // ===================== MODEL SWITCHER (prompt bar) =====================
+  // The prompt-bar switcher shows three choices: Gemini Nano on-device, or one of the cloud
+  // models. Picking a cloud model is an explicit opt-in to the cloud, so it is labelled ☁️.
+  const DEVICE_MODEL_ID = "device";
+  const CLOUD_MODEL_ID_PREFIX = "cloud:";
+
+  function currentModelId() {
+    return currentRoute() === "prefer-cloud" ? `${CLOUD_MODEL_ID_PREFIX}${currentCloudModel()}` : DEVICE_MODEL_ID;
+  }
+
+  // Synchronous: everything comes from settings, no network.
+  function listModels() {
+    const deviceDetail = currentRoute() === "prefer-device"
+      ? "On-device · cloud fallback on"
+      : "On-device · private";
+    const options = [{ id: DEVICE_MODEL_ID, label: "Gemini Nano", detail: deviceDetail }];
+    for (const [key, model] of Object.entries(CLOUD_MODELS)) {
+      const tier = key === "fast" ? "Fast" : "Frontier";
+      options.push({ id: `${CLOUD_MODEL_ID_PREFIX}${key}`, label: model.id, detail: `☁️ Cloud · ${tier} · sends messages to Google` });
+    }
+    return { options, currentId: currentModelId() };
+  }
+
+  // Stores the choice only; sidebar.js then calls init() to rebuild the model with it.
+  function selectModel(id) {
+    if (id === DEVICE_MODEL_ID) {
+      storeSetting(STORAGE_KEYS.route, "device");
+    } else if (id.startsWith(CLOUD_MODEL_ID_PREFIX) && Object.hasOwn(CLOUD_MODELS, id.slice(CLOUD_MODEL_ID_PREFIX.length))) {
+      storeSetting(STORAGE_KEYS.route, "prefer-cloud");
+      storeSetting(STORAGE_KEYS.cloudModel, id.slice(CLOUD_MODEL_ID_PREFIX.length));
+    } else {
+      throw new Error(`Unknown model: ${id}`);
+    }
+    syncSettingsControls();
+  }
+
   function throwIfAborted(signal) {
     if (signal?.aborted) throw new DOMException("Generation stopped", "AbortError");
   }
@@ -435,6 +478,8 @@
     errorTitle,
     helpLines,
     bindSettingsUI,
+    listModels,
+    selectModel,
     buildConversationPrompt, // exposed for tests/firebase-checks.mjs
   };
 })();

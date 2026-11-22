@@ -380,6 +380,19 @@
         </div>
         <input type="file" id="file-upload" accept="image/*" hidden />
         <textarea id="user-input" class="user-input" rows="1" placeholder="Ask anything…" autocomplete="off"></textarea>
+        <!-- MODEL SWITCHER: pill beside the send button showing the answering model; model-switcher.js builds the menu.
+             Hidden by sidebar.js in editions with only one model to pick. -->
+        <div id="model-switcher" class="model-switcher hidden">
+          <button id="btn-model" class="model-pill" type="button" title="Switch model" aria-haspopup="menu"
+            aria-expanded="false" aria-controls="model-menu">
+            <span id="model-pill-label" class="model-pill-label">Model</span>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+              stroke-linejoin="round" class="model-pill-chevron">
+              <polyline points="6 9 12 15 18 9"></polyline>
+            </svg>
+          </button>
+          <div id="model-menu" class="model-menu hidden" role="menu" aria-label="Choose a model"></div>
+        </div>
         <button id="btn-send" class="btn-send" title="Send" aria-label="Send message" disabled>
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
             stroke-linejoin="round">
@@ -403,6 +416,7 @@
   <script src="config.js"></script>
   <!-- Registers optional providers; loads the Firebase SDK only when config.js enables "firebase". -->
   <script src="firebase-backend.js"></script>
+  <script src="model-switcher.js"></script>
   <script src="sidebar.js"></script>
 </body>
 
