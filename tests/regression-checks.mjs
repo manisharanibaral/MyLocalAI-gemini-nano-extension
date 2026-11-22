@@ -373,6 +373,51 @@ assert.match(functionBody(sidebarJs, "saveSettings"), /tabScreenshotMode/, "the 
   assert.match(functionBody(sidebarJs, "setAttachAvailable"), /attachWrap\.classList\.toggle\("hidden", !available\)/, "the + button hides without vision");
 }
 {
+  // Page watcher: refresh the screenshot after scrolling, and drag-select adds text + screenshot.
+  const pageWatchJs = read("page-watch.js");
+  const backgroundJs = read("background.js");
+  const buildJs = read("scripts/build.mjs");
+  assert.match(buildJs, /"page-watch\.js"/, "page-watch.js must be in SHARED_FILES so it ships");
+  assert.ok(manifestJson.permissions.includes("scripting"), "registering/injecting the page watcher needs the scripting permission");
+  assert.equal("content_scripts" in manifestJson, false, "a static content script would make site access an install-time permission");
+
+  assert.match(pageWatchJs, /if \(window\.__myLocalAiPageWatch\) return;/, "the watcher must not run twice in one page");
+  assert.match(functionBody(pageWatchJs, "onScroll"), /clearTimeout\(scrollTimer\)[\s\S]*SCROLL_SETTLE_MS/, "scrolling must wait until the user stops");
+  assert.match(pageWatchJs, /addEventListener\("scroll", onScroll, SCROLL_OPTIONS\)/, "scroll is watched");
+  assert.match(pageWatchJs, /SCROLL_OPTIONS = \{ capture: true, passive: true \}/, "scroll inside page panels counts and never blocks scrolling");
+  assert.match(pageWatchJs, /addEventListener\("mouseup", onPointerUp, true\)/, "drag-selection is detected on mouse release");
+  const report = functionBody(pageWatchJs, "reportSelection");
+  assert.match(report, /if \(!text\) \{\s*lastSentSelection = "";\s*return;/, "a click that clears the selection keeps the context");
+  assert.match(report, /text === lastSentSelection\) return/, "the same selection is not re-sent on every click");
+  assert.match(functionBody(pageWatchJs, "notifyExtension"), /catch \(_\) \{\s*stopWatching\(\)/, "an orphaned script (extension reloaded) should stop quietly");
+
+  const sync = functionBody(backgroundJs, "syncPageWatchScript");
+  assert.match(sync, /permissions\.contains\(TAB_ACCESS\)/, "the watcher is registered only with site access");
+  assert.match(sync, /registerContentScripts\([\s\S]*js: \["page-watch\.js"\][\s\S]*persistAcrossSessions: true/, "the watcher registration persists");
+  assert.match(sync, /!granted && registered\.length > 0[\s\S]*unregisterContentScripts/, "revoking access removes the watcher");
+  for (const event of ["runtime.onInstalled", "runtime.onStartup", "permissions.onAdded", "permissions.onRemoved"]) {
+    assert.ok(backgroundJs.includes(`chrome.${event}.addListener(syncPageWatchScript)`), `${event} should resync the watcher`);
+  }
+
+  const auto = functionBody(sidebarJs, "refreshAutoScreenshot");
+  assert.match(auto, /trigger === "scroll" && !hasAutoScreenshotPending\(\)\) return/, "scroll only refreshes a screenshot still in the prompt bar");
+  assert.match(functionBody(sidebarJs, "hasAutoScreenshotPending"), /currentAttachedImage\) && attachedImageIsAuto/, "a user's own image is never 'pending auto'");
+  const onPage = functionBody(sidebarJs, "onPageMessage");
+  assert.match(onPage, /if \(!isFromWatchedTab\(sender\)\) return;/, "only the active tab of this panel's window counts");
+  assert.match(onPage, /PAGE_TEXT_SELECTED[\s\S]*onPageTextSelected\(message\.text\)/, "selections are handled");
+  assert.match(onPage, /PAGE_SCROLL_SETTLED[\s\S]*refreshAutoScreenshot\("scroll"\)/, "settled scrolls refresh the screenshot");
+  assert.match(functionBody(sidebarJs, "onPageTextSelected"), /setContextFromSelection\(text\);\s*refreshAutoScreenshot\("selection"\)/,
+    "a selection adds the text and a screenshot without the right-click menu");
+  assert.match(functionBody(sidebarJs, "isFromWatchedTab"), /sender\?\.tab\?\.active[\s\S]*windowId === panelWindowId/, "other windows' tabs are ignored");
+  assert.match(functionBody(sidebarJs, "ensurePageWatcher"), /executeScript\(\{ target: \{ tabId \}, files: \["page-watch\.js"\] \}\)\.catch/,
+    "already-open tabs get the watcher injected, failing quietly on protected pages");
+  const watch = functionBody(sidebarJs, "watchTabsForScreenshots");
+  assert.match(watch, /panelWindowId = \(await chrome\.windows\.getCurrent\(\)\)\.id;\s*watchActiveTab\(\)/, "the open tab is watched when the panel starts");
+  assert.match(watch, /onActivated[\s\S]*ensurePageWatcher\(tabId\)/, "switched-to tabs get the watcher");
+  assert.match(functionBody(sidebarJs, "allowScreenshotsFromCard"), /watchActiveTab\(\)/, "granting access starts watching the open tab");
+  assert.match(functionBody(sidebarJs, "onTabScreenshotModeChange"), /if \(granted\) \{\s*watchActiveTab\(\)/, "granting access starts watching the open tab");
+}
+{
   // Run the URL filter for real: it decides which pages get auto screenshots.
   const hostRegex = sidebarJs.match(/const SEARCH_ENGINE_HOST = (\/.+\/i);/)[1];
   const isWorth = new Function("rawUrl", `
@@ -397,6 +442,20 @@ assert.match(functionBody(sidebarJs, "saveSettings"), /tabScreenshotMode/, "the 
   assert.match(functionBody(sidebarJs, "renderHistoryList"), /extractTitle\(s\.history\)/, "old saved titles should be recomputed");
 }
 assert.match(sidebarCss, /\.attach-menu\s*\{[^}]*bottom: calc\(100% \+ 8px\)/, "the attach menu should open above the input");
+{
+  // The context card shows as much of the selection as the panel width allows.
+  const setCtx = functionBody(sidebarJs, "setContextFromSelection");
+  assert.equal(/words\.slice\(0, 3\)/.test(setCtx), false, "the selection preview must not be cut to three words");
+  assert.match(setCtx, /contextPreview\(trimmed\)[\s\S]*contextTextEl\.title = trimmed/, "the card shows the preview and hovers the full text");
+  const preview = new Function("text", `const CONTEXT_PREVIEW_MAX_CHARS = 500;${functionBody(sidebarJs, "contextPreview")}`);
+  assert.equal(preview("This app is\n\n great for   buying"), '"This app is great for buying"', "whitespace is flattened, all words kept");
+  const long = preview("x".repeat(2000));
+  assert.ok(long.length < 510 && long.endsWith('…"'), "very long selections are cut for the preview only");
+  assert.match(sidebarCss, /#context-text,\s*\.img-preview-text\s*\{[^}]*white-space: normal[^}]*display: -webkit-box/, "previews wrap to the panel width");
+  assert.match(sidebarCss, /#context-text \{ -webkit-line-clamp: 3;/, "the selection preview clamps at three lines");
+  assert.match(sidebarCss, /\.img-preview-text \{ -webkit-line-clamp: 2;/, "the screenshot title clamps at two lines");
+  assert.match(functionBody(sidebarJs, "attachImageDataUrl"), /imagePreviewText\.title = label/, "the screenshot title shows in full on hover");
+}
 
 // ===== Settings layout (grouped cards + pinned actions) =====
 {

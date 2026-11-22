@@ -36,6 +36,38 @@ chrome.contextMenus.onClicked.addListener((info, tab) => {
   }
 });
 
+// ===== Page watcher (scroll + selection events for the side panel) =====
+// Site access is optional, so the watcher is registered only while the user has granted it,
+// and removed again if they revoke it. Registration persists across browser restarts.
+const PAGE_WATCH_SCRIPT_ID = "mylocalai-page-watch";
+const TAB_ACCESS = { origins: ["<all_urls>"] };
+
+async function syncPageWatchScript() {
+  if (!chrome.scripting?.registerContentScripts) return;
+  try {
+    const granted = await chrome.permissions.contains(TAB_ACCESS);
+    const registered = await chrome.scripting.getRegisteredContentScripts({ ids: [PAGE_WATCH_SCRIPT_ID] });
+    if (granted && registered.length === 0) {
+      await chrome.scripting.registerContentScripts([{
+        id: PAGE_WATCH_SCRIPT_ID,
+        js: ["page-watch.js"],
+        matches: ["<all_urls>"],
+        runAt: "document_idle",
+        persistAcrossSessions: true
+      }]);
+    } else if (!granted && registered.length > 0) {
+      await chrome.scripting.unregisterContentScripts({ ids: [PAGE_WATCH_SCRIPT_ID] });
+    }
+  } catch (error) {
+    console.warn("[MyLocalAI] Page watcher registration failed:", error);
+  }
+}
+
+chrome.runtime.onInstalled.addListener(syncPageWatchScript);
+chrome.runtime.onStartup.addListener(syncPageWatchScript);
+chrome.permissions.onAdded.addListener(syncPageWatchScript);
+chrome.permissions.onRemoved.addListener(syncPageWatchScript);
+
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message?.type !== "GET_SELECTED_CONTEXT") return false;
 

@@ -46,6 +46,7 @@ To try changes: load the repo root (the Mixed edition) or a `dist/` folder via `
 
 **Runtime pieces**
 - `background.js` (service worker): opens the side panel on action click, registers the right-click "Use selection as MyLocalAI context" menu, and holds the pending selection. It hands text to the panel via a `TEXT_SELECTED` message, or the panel pulls it with `GET_SELECTED_CONTEXT` on load (covers the panel not being open yet).
+- `page-watch.js` (content script): reports `PAGE_SCROLL_SETTLED` (debounced) and `PAGE_TEXT_SELECTED` to the panel. It is never in `manifest.json` (that would make site access install-time); `background.js` registers it with `chrome.scripting` only while optional `<all_urls>` access is granted, and the panel injects it into the already-open tab.
 - `sidebar.html/.css/.js`: the entire chat UI and both AI backends, in a single IIFE in `sidebar.js` (~1.5k lines). Sections are marked with `// ===== NAME =====` banners (DOM refs, edition config, state, settings, sessions/history, backend init, streaming, rendering, event listeners).
 - Backend selection (`init` → `initNanoSession` / `initOllamaSession`): Nano is tried first when enabled, Ollama is the fallback; `activeBackend` is `"nano" | "ollama" | null` and `updateBackendUI` reflects it. Sending goes through `sendMessage` → `streamNano` or `streamOllama`.
   - Nano uses Chrome's `LanguageModel` Prompt API (session object kept in `session`).

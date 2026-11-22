@@ -1011,6 +1011,23 @@ hr {
   font-style: italic;
 }
 
+/* Selected text and screenshot titles wrap to fill the panel width, then clamp, so a wider
+   sidebar shows more instead of cutting everything to one short line. */
+#context-text,
+.img-preview-text {
+  min-width: 0;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  line-height: 1.4;
+}
+#context-text { -webkit-line-clamp: 3; line-clamp: 3; }
+.img-preview-text { -webkit-line-clamp: 2; line-clamp: 2; }
+#context-card .context-icon { align-self: flex-start; margin-top: 2px; flex-shrink: 0; }
+#context-card .btn-clear-context,
+#image-preview-card .btn-clear-context { flex-shrink: 0; }
+
 /* The access question wraps instead of being cut off: it is the whole point of the card. */
 .screenshot-access-card .context-text { white-space: normal; font-style: normal; }
 .btn-card-action {
@@ -1051,7 +1068,7 @@ hr {
 }
 
 .img-thumb {
-  width: 24px; height: 24px;
+  width: 36px; height: 36px;
   overflow: hidden;
   border-radius: 4px;
   border: 1px solid var(--border-subtle);

@@ -20,6 +20,7 @@ const DIST = join(ROOT, "dist");
 // Files the extension actually loads at runtime.
 const SHARED_FILES = [
   "background.js",
+  "page-watch.js",
   "sidebar.html",
   "sidebar.css",
   "sidebar.js",

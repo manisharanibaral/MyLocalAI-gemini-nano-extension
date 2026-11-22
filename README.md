@@ -129,9 +129,9 @@ Set up **Gemini Nano**, **Ollama**, or both, using the steps above. When the pan
 ## Using MyLocalAI
 
 - **Chat:** type a message and press **Enter**. **Shift+Enter** adds a new line. Click ■ to stop a reply.
-- **Ask about a webpage:** select text on any page, right-click, and choose **Use selection as MyLocalAI context**. The text is attached to your next question.
+- **Ask about a webpage:** with the panel open, just drag to select text on the page: the text is attached to your next question and, when screenshots are on, a screenshot of the page (with your selection) goes in the message box too. Without site access, select text, right-click, and choose **Use selection as MyLocalAI context**.
 - **Images:** when the model supports images, a **+** button appears. It opens a menu to upload an image or take a screenshot of the current tab. You can also paste an image or drag one onto the input box.
-- **Tab screenshots:** by default, when you open MyLocalAI (or start a new chat) a screenshot of the website you're on appears in the message box, ready to send. Search result pages, the New Tab page and other browser pages are skipped; remove the screenshot with its ✕. Change this in **Settings → Add a screenshot of the page**: *Every page* updates the screenshot as you switch tabs or open pages, *Only with +* turns automatic screenshots off. Screenshots need site access ("Read and change all your data on all websites"). The first time, an **Allow** card appears above the message box; the image never leaves your device.
+- **Tab screenshots:** by default, when you open MyLocalAI (or start a new chat) a screenshot of the website you're on appears in the message box, ready to send. Search result pages, the New Tab page and other browser pages are skipped; remove the screenshot with its ✕. While a screenshot is waiting in the message box, scrolling the page updates it once you stop scrolling. Change this in **Settings → Add a screenshot of the page**: *Every page* updates the screenshot as you switch tabs or open pages, *Only with +* turns automatic screenshots off. Screenshots need site access ("Read and change all your data on all websites"). The first time, an **Allow** card appears above the message box; the image never leaves your device.
 - **History:** every time you open the panel it starts a new chat; the clock icon lists past chats so you can go back to one. The pencil icon starts a new chat.
 - **Settings:** the gear icon lets you change the system prompt, save up to 5 prompts, and adjust temperature and top-K. Click **Apply & Restart Session** to use the new settings.
 - **Reset:** Settings → **Reset All Data & Settings** deletes all chats and settings for that edition.
@@ -140,7 +140,7 @@ Set up **Gemini Nano**, **Ollama**, or both, using the steps above. When the pan
 
 - **Gemini Nano edition:** has no network permissions at all (site access is only requested, optionally, for tab screenshots). Prompts are processed by Chrome on your device.
 - **Ollama / Mixed editions:** may only connect to `localhost:11434` (your own Ollama).
-- Chat history is stored in the extension's local storage on your computer. Selected page text is read only when you use the right-click menu.
+- Chat history is stored in the extension's local storage on your computer. Selected page text is read only when you select it (with site access granted, while the panel is open) or use the right-click menu; it stays inside the extension.
 
 ---
 
@@ -158,7 +158,8 @@ Editions are defined in `EDITIONS` in [scripts/build.mjs](scripts/build.mjs). Th
 ```
 ├── manifest.json        base manifest (Mixed edition)
 ├── config.js            edition config (Mixed edition)
-├── background.js        side panel + right-click menu
+├── background.js        side panel + right-click menu + page-watcher registration
+├── page-watch.js        reports page scroll and text selection to the panel
 ├── sidebar.html/.css/.js chat UI and both AI backends
 ├── purify.min.js        DOMPurify (sanitizes rendered Markdown)
 ├── marked.umd.js        marked (Markdown parser: tables, lists, code, …)

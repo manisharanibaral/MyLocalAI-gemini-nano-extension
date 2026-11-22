@@ -1734,6 +1734,7 @@ Always prefer structured output over plain paragraphs.`;
     attachedImageIsAuto = false; // automatic callers set it back to true after this
     imagePreviewImg.src = compressed;
     imagePreviewText.textContent = label;
+    imagePreviewText.title = label;
     imagePreviewCard.classList.remove("hidden");
     btnSend.disabled = isGenerating;
   }
@@ -1743,6 +1744,7 @@ Always prefer structured output over plain paragraphs.`;
     imagePreviewCard.classList.add("hidden");
     imagePreviewImg.src = "";
     imagePreviewText.textContent = "Attached image";
+    imagePreviewText.title = "";
     attachedImageIsAuto = false;
     fileUpload.value = "";
     if (!userInput.value.trim()) {
@@ -2040,6 +2042,16 @@ Always prefer structured output over plain paragraphs.`;
     contextCard.classList.add("hidden");
   }
 
+  // The card shows as much of the selection as fits: CSS clamps it to a few lines at the
+  // panel's current width. Newlines are flattened so the clamp counts visual lines, and very
+  // long selections are cut early so the DOM never holds a whole article just for a preview.
+  const CONTEXT_PREVIEW_MAX_CHARS = 500;
+  function contextPreview(text) {
+    const flat = text.replace(/\s+/g, " ");
+    const cut = flat.length > CONTEXT_PREVIEW_MAX_CHARS ? `${flat.slice(0, CONTEXT_PREVIEW_MAX_CHARS)}…` : flat;
+    return `"${cut}"`;
+  }
+
   function setContextFromSelection(text) {
     const trimmed = (text || "").trim();
     if (!trimmed) {
@@ -2048,9 +2060,8 @@ Always prefer structured output over plain paragraphs.`;
     }
 
     currentContextText = trimmed;
-    const words = trimmed.split(/\s+/);
-    const preview = words.slice(0, 3).join(" ");
-    contextTextEl.textContent = `"${preview}${words.length > 3 ? "..." : ""}"`;
+    contextTextEl.textContent = contextPreview(trimmed);
+    contextTextEl.title = trimmed; // hover shows the whole selection
     contextCard.classList.remove("hidden");
   }
 
@@ -2064,9 +2075,11 @@ Always prefer structured output over plain paragraphs.`;
   }
 
   if (typeof chrome !== "undefined" && chrome.runtime && chrome.runtime.onMessage) {
-    chrome.runtime.onMessage.addListener((message) => {
+    chrome.runtime.onMessage.addListener((message, sender) => {
       if (message.type === "TEXT_SELECTED") {
         setContextFromSelection(message.text);
+      } else {
+        onPageMessage(message, sender);
       }
     });
   }
@@ -2142,11 +2155,16 @@ Always prefer structured output over plain paragraphs.`;
   //   trigger "open":       panel opened, backend (re)started or New chat (open + follow modes)
   //   trigger "tab-change": user switched tab or a page finished loading
   //                         (follow mode, or open mode before the first prompt)
+  //   trigger "scroll":     user stopped scrolling; only refreshes a screenshot already waiting
+  //                         in the prompt bar, so removing or sending it stops the updates
+  //   trigger "selection":  user selected text on the page; an explicit action, so it also
+  //                         works after the first prompt
   // Failures are silent: an automatic screenshot is a convenience, never an error.
   async function refreshAutoScreenshot(trigger) {
     const mode = getTabScreenshotMode();
     if (mode === "manual" || !canAttachImages()) return;
     if (trigger === "tab-change" && !followsTabChanges(mode)) return;
+    if (trigger === "scroll" && !hasAutoScreenshotPending()) return;
     // Never replace an image the user chose themselves.
     if (currentAttachedImage && !attachedImageIsAuto) return;
     if (!(await hasTabAccess())) {
@@ -2183,6 +2201,10 @@ Always prefer structured output over plain paragraphs.`;
     return mode === "follow" || (mode === "open" && chatHistory.length === 0);
   }
 
+  function hasAutoScreenshotPending() {
+    return Boolean(currentAttachedImage) && attachedImageIsAuto;
+  }
+
   // captureVisibleTab is limited to ~2 calls per second, and one navigation fires several
   // tab events, so tab changes are coalesced into one capture after things settle.
   let tabChangeTimer = null;
@@ -2194,15 +2216,53 @@ Always prefer structured output over plain paragraphs.`;
   // Follows tab switches and page loads in the window this panel belongs to.
   async function watchTabsForScreenshots() {
     if (!chrome.tabs?.onActivated || !chrome.windows?.getCurrent) return;
-    const panelWindowId = (await chrome.windows.getCurrent()).id;
-    chrome.tabs.onActivated.addListener(({ windowId }) => {
-      if (windowId === panelWindowId) scheduleTabChangeScreenshot();
+    panelWindowId = (await chrome.windows.getCurrent()).id;
+    watchActiveTab();
+    chrome.tabs.onActivated.addListener(({ tabId, windowId }) => {
+      if (windowId !== panelWindowId) return;
+      ensurePageWatcher(tabId);
+      scheduleTabChangeScreenshot();
     });
     chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
       if (changeInfo.status === "complete" && tab.active && tab.windowId === panelWindowId) {
         scheduleTabChangeScreenshot();
       }
     });
+  }
+
+  // ----- Page watcher: scroll + text selection inside the tab -----
+  // page-watch.js reports scrolling and selections. background.js registers it for pages
+  // loaded after site access was granted; tabs that were already open get it injected here.
+  let panelWindowId = null;
+
+  function ensurePageWatcher(tabId) {
+    if (!tabId || !chrome.scripting?.executeScript) return;
+    // Fails on protected pages or without site access; the watcher is optional, so stay quiet.
+    chrome.scripting.executeScript({ target: { tabId }, files: ["page-watch.js"] }).catch(() => { });
+  }
+
+  function watchActiveTab() {
+    getActiveTab().then(tab => ensurePageWatcher(tab?.id)).catch(() => { });
+  }
+
+  // Only the visible tab of this panel's window counts; other windows have their own panel.
+  function isFromWatchedTab(sender) {
+    return Boolean(sender?.tab?.active) && sender.tab.windowId === panelWindowId;
+  }
+
+  // Dragging over text replaces the right-click menu: the text becomes context and the
+  // page (with the selection highlighted) goes into the prompt bar.
+  function onPageTextSelected(text) {
+    setContextFromSelection(text);
+    refreshAutoScreenshot("selection");
+  }
+
+  // Scroll events are already debounced in the page, so this only has to respect the
+  // capture rate limit shared with tab changes.
+  function onPageMessage(message, sender) {
+    if (!isFromWatchedTab(sender)) return;
+    if (message.type === "PAGE_TEXT_SELECTED") onPageTextSelected(message.text);
+    if (message.type === "PAGE_SCROLL_SETTLED") refreshAutoScreenshot("scroll");
   }
 
   // Automatic screenshots can't ask for site access themselves (no click to attach the
@@ -2221,6 +2281,7 @@ Always prefer structured output over plain paragraphs.`;
     const granted = await requestTabAccess(); // first await: keeps the click's gesture
     if (!granted) return;
     hideScreenshotAccessCard();
+    watchActiveTab();
     refreshAutoScreenshot("open");
   }
 
@@ -2235,8 +2296,12 @@ Always prefer structured output over plain paragraphs.`;
     }
     const granted = await requestTabAccess(); // first await: keeps the change event's gesture
     try { localStorage.removeItem("screenshotAccessDismissed"); } catch (_) { }
-    if (granted) refreshAutoScreenshot("open");
-    else showScreenshotAccessCard();
+    if (granted) {
+      watchActiveTab();
+      refreshAutoScreenshot("open");
+    } else {
+      showScreenshotAccessCard();
+    }
   }
 
   function dismissScreenshotAccessCard() {
