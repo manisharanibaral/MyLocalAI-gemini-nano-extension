@@ -19,6 +19,7 @@ const expected = {
   nano: { backends: ["nano"], hosts: false },
   ollama: { backends: ["ollama"], hosts: true },
   mixed: { backends: ["nano", "ollama"], hosts: true },
+  "firebase-hybrid": { backends: ["firebase"], hosts: true },
 };
 
 const names = new Set();
@@ -34,7 +35,7 @@ for (const [edition, { backends, hosts }] of Object.entries(expected)) {
   }
   names.add(manifest.name);
 }
-assert.equal(names.size, 3, "each edition needs a distinct name so they can be installed side by side");
+assert.equal(names.size, Object.keys(expected).length, "each edition needs a distinct name so they can be installed side by side");
 
 // The root folder must stay loadable as the mixed edition.
 assert.deepEqual(loadConfig("config.js").backends, ["nano", "ollama"], "root config.js is the mixed edition");

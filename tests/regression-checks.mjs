@@ -339,7 +339,8 @@ assert.match(functionBody(sidebarJs, "saveSettings"), /tabScreenshotMode/, "the 
   // The screenshot is shown in the prompt bar ahead of time, not added silently at send.
   assert.equal(/autoAttachTabScreenshot|sendFromUser/.test(sidebarJs), false, "send-time auto screenshots were replaced by the prompt-bar preview");
   const initBody = functionBody(sidebarJs, "init");
-  assert.equal((initBody.match(/refreshAutoScreenshot\("open"\)/g) || []).length, 2, "both backends should show the screenshot once ready");
+  // Nano, Ollama and the external provider (firebase-hybrid) each show it once ready.
+  assert.equal((initBody.match(/refreshAutoScreenshot\("open"\)/g) || []).length, 3, "every backend should show the screenshot once ready");
   assert.match(functionBody(sidebarJs, "startNewChat"), /refreshAutoScreenshot\("open"\)/, "a new chat should show the current page");
 
   const auto = functionBody(sidebarJs, "refreshAutoScreenshot");

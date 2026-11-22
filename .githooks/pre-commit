@@ -6,6 +6,7 @@ cd "$(git rev-parse --show-toplevel)"
 
 node tests/regression-checks.mjs
 node tests/edition-checks.mjs
+node tests/firebase-checks.mjs
 
 # Commit number this commit will become (HEAD doesn't exist before the first commit).
 commits_so_far=$(git rev-list --count HEAD 2>/dev/null || echo 0)

@@ -1,16 +1,17 @@
 # MyLocalAI
 
-A private AI chat in your browser's side panel. Everything runs on your own machine: no accounts, no API keys, and nothing is sent to the cloud.
+A private AI chat in your browser's side panel. The Nano, Ollama and Mixed editions run entirely on your own machine: no accounts, no API keys, and nothing is sent to the cloud. The **Firebase Hybrid** edition runs on-device by default too, and lets you *opt in* to a cloud Gemini fallback through Firebase AI Logic.
 
-MyLocalAI comes in **three editions**. Pick the one that matches your browser and setup:
+MyLocalAI comes in **four editions**. Pick the one that matches your browser and setup:
 
 | Edition | AI engine | Browsers | Extra software | Best for |
 |---|---|---|---|---|
 | **Gemini Nano** | Chrome's built-in Gemini Nano | Google Chrome 138+ (desktop) | None | Chrome users who want zero setup |
 | **Ollama** | Any model you run in [Ollama](https://ollama.com) | Chrome, Edge, Brave, Opera, Vivaldi, Arc… | Ollama | Non-Chrome browsers, or picking your own model (Llama, Qwen, Gemma, DeepSeek…) |
 | **Mixed** | Gemini Nano, falls back to Ollama | Any Chromium browser | Optional | People who want it to work everywhere |
+| **Firebase Hybrid** | Gemini Nano on-device via [Firebase AI Logic](https://firebase.google.com/docs/ai-logic/hybrid/web/get-started), opt-in cloud Gemini fallback | Google Chrome 139+ (desktop) | A Firebase project | Private by default, still answering when on-device AI isn't available |
 
-All three have the same features: streaming chat, saved chat history, saved system prompts, temperature/top-K settings, Markdown, code blocks with copy buttons, and image input when the model supports it. You can also right-click selected text on any page and choose **"Use selection as MyLocalAI context"**.
+All editions have the same features: streaming chat, saved chat history, saved system prompts, temperature/top-K settings, Markdown, code blocks with copy buttons, and image input when the model supports it. You can also right-click selected text on any page and choose **"Use selection as MyLocalAI context"**.
 
 > Firefox and Safari aren't supported: they don't have the Chrome side panel API.
 
@@ -30,7 +31,8 @@ This creates one ready-to-load folder per edition:
 dist/
 ├── mylocalai-nano/     ← Gemini Nano only
 ├── mylocalai-ollama/   ← Ollama only
-└── mylocalai-mixed/    ← Nano first, Ollama fallback
+├── mylocalai-mixed/    ← Nano first, Ollama fallback
+└── mylocalai-firebase-hybrid/ ← Firebase AI Logic: Nano on-device, opt-in cloud Gemini
 ```
 
 Other options:
@@ -124,6 +126,44 @@ To switch models, open **Settings** (gear icon), type a model name you've pulled
 
 Set up **Gemini Nano**, **Ollama**, or both, using the steps above. When the panel opens, MyLocalAI tries Gemini Nano first. If Nano isn't available (for example, in Edge or Brave), it uses Ollama. The header always shows which engine is active.
 
+### Firebase Hybrid edition (Firebase AI Logic)
+
+**Why it exists (value proposition).** On-device AI is private, free and works offline, but it only runs on some machines: Chrome desktop with enough disk, RAM or VRAM, and a downloaded model. Without it, a local-only assistant simply stops working. This edition keeps MyLocalAI's private-by-default chat and uses **Firebase AI Logic hybrid inference** so one code path serves both cases. Gemini Nano answers on-device when Chrome can run it. When it can't, and only if you allow it, the same request goes to cloud Gemini through Firebase, protected by App Check. Everything else stays the same: page context, tab screenshots, multi-answer replies, history and saved prompts.
+
+**How Firebase AI Logic is used.** [firebase-backend.js](firebase-backend.js) loads the bundled Firebase JS SDK ([vendor/firebase-ai.js](vendor/firebase-ai.js), built from [tools/firebase-bundle](tools/firebase-bundle)). It calls `initializeApp`, `initializeAppCheck`, `getAI(app, { backend: new GoogleAIBackend() })` and `getGenerativeModel(ai, { mode, inCloudParams, onDeviceParams })`, then streams every answer with `generateContentStream`. The footer shows where each answer ran (`response.inferenceSource`).
+
+**Where answers run** (Settings → *Firebase AI Logic · hybrid*):
+
+| Setting | InferenceMode | Cloud? |
+|---|---|---|
+| On-device only *(default)* | `ONLY_ON_DEVICE` | Never |
+| On-device first, cloud Gemini fallback | `PREFER_ON_DEVICE` | Only when on-device can't answer |
+| Cloud Gemini first, on-device fallback | `PREFER_IN_CLOUD` | Yes; on-device only if the cloud call fails |
+
+Cloud models (free tier only): **Fast**: `gemini-3.5-flash-lite` (default), **Frontier**: `gemini-4-hydrogen`.
+
+> ☁️ **Cloud is opt-in and off by default.** With a cloud route selected, your messages, any selected page text, and any attached image or screenshot are sent to Google's Gemini Developer API through Firebase AI Logic (`firebasevertexai.googleapis.com`). On-device only never sends chat text anywhere.
+
+**Setup**
+
+1. Create a Firebase project, add a **Web app**, and enable **Firebase AI Logic** with the **Gemini Developer API** (free Spark plan; no billing needed for the models above).
+2. Copy the example config and fill in your web app's values (Firebase console → Project settings → Your apps):
+   ```bash
+   cp firebase-settings.example.js firebase-settings.local.js
+   ```
+   `firebase-settings.local.js` is git-ignored. Never commit it.
+3. Build and load `dist/mylocalai-firebase-hybrid` (steps 1–2 above):
+   ```bash
+   node scripts/build.mjs firebase-hybrid
+   ```
+4. **On-device:** use Chrome desktop 139+, enable `chrome://flags/#prompt-api-for-gemini-nano-multimodal-input`, and relaunch. If the model still needs downloading, the panel asks you to click **Retry**, because Chrome only starts the download after a click.
+5. **App Check (needed for cloud answers).** Firebase AI Logic enforces App Check. A Chrome extension can't use the web attestation provider (reCAPTCHA is a remote script, which Manifest V3 forbids), so this edition uses an **App Check debug token**:
+   - Leave `appCheckDebugToken: ""`, open the side panel, right-click → **Inspect**, and copy the `App Check debug token: …` line from the Console.
+   - Register it in Firebase console → **Security → App Check → Apps → Manage debug tokens**.
+   - Optionally paste it into `appCheckDebugToken` so it survives reinstalls. Treat it like a password: anyone holding it can use your project's App Check.
+
+**How chat history reaches the model.** Firebase on-device inference is single-turn (each call is a fresh Chrome session). Each request therefore sends **one prompt**: the newest earlier turns, at most 10 messages and about 12,000 characters, labelled `User:` / `Assistant:`, followed by your new message. The system prompt goes in the model's own slot (on-device `initialPrompts`, cloud `systemInstruction`). The cloud route gets the same prompt, so an answer doesn't depend on which side served it. With **Responses at once** above 1, answers are generated one after another, because the SDK replaces its on-device session on every call.
+
 ---
 
 ## Using MyLocalAI
@@ -140,17 +180,18 @@ Set up **Gemini Nano**, **Ollama**, or both, using the steps above. When the pan
 
 - **Gemini Nano edition:** has no network permissions at all (site access is only requested, optionally, for tab screenshots). Prompts are processed by Chrome on your device.
 - **Ollama / Mixed editions:** may only connect to `localhost:11434` (your own Ollama).
+- **Firebase Hybrid edition:** may only connect to `firebasevertexai.googleapis.com` (Firebase AI Logic); App Check tokens come from Google's App Check service. With the default **On-device only** route, nothing is sent: prompts are processed by Chrome on your device. If you pick a cloud route, chat text, selected page text and attached images are sent to Google's Gemini Developer API, and Google's terms for that API apply.
 - Chat history is stored in the extension's local storage on your computer. Selected page text is read only when you select it (with site access granted, while the panel is open) or use the right-click menu; it stays inside the extension.
 
 ---
 
 ## For developers
 
-The three editions share **one codebase**. The only differences between them are:
+The four editions share **one codebase**. The only differences between them are:
 
 | File | What changes per edition |
 |---|---|
-| `config.js` | `backends`: which engines the sidebar may try (`["nano"]`, `["ollama"]`, or `["nano", "ollama"]`) |
+| `config.js` | `backends`: which engines the sidebar may try (`["nano"]`, `["ollama"]`, `["nano", "ollama"]`, or `["firebase"]`) |
 | `manifest.json` | Name, description, `host_permissions` (Nano edition has none), `minimum_chrome_version` |
 
 Editions are defined in `EDITIONS` in [scripts/build.mjs](scripts/build.mjs). The root `manifest.json` and `config.js` are the Mixed edition, and the build derives the others from them. Make code changes in the root files, then rebuild. Don't edit the `dist/` folders directly (`dist/` is git-ignored).
@@ -163,10 +204,23 @@ Editions are defined in `EDITIONS` in [scripts/build.mjs](scripts/build.mjs). Th
 ├── sidebar.html/.css/.js chat UI and both AI backends
 ├── purify.min.js        DOMPurify (sanitizes rendered Markdown)
 ├── marked.umd.js        marked (Markdown parser: tables, lists, code, …)
-├── scripts/build.mjs    builds dist/mylocalai-{nano,ollama,mixed}
+├── firebase-backend.js  Firebase AI Logic hybrid provider (firebase-hybrid edition)
+├── firebase-settings.example.js  placeholder config → copy to firebase-settings.local.js (git-ignored)
+├── vendor/firebase-ai.js bundled Firebase JS SDK (app, app-check, ai)
+├── tools/firebase-bundle/ npm project that rebuilds vendor/firebase-ai.js
+├── scripts/build.mjs    builds dist/mylocalai-{nano,ollama,mixed,firebase-hybrid}
 └── tests/
     ├── regression-checks.mjs
-    └── edition-checks.mjs
+    ├── edition-checks.mjs
+    └── firebase-checks.mjs
+```
+
+Extra backends live in their own file and register in `window.MYLOCALAI_PROVIDERS`. `sidebar.js` reaches them only through its **EXTERNAL PROVIDER HOOK** section (`streamProvider`, next to `streamNano` / `streamOllama`), so the Nano and Ollama paths are unchanged. `firebase-backend.js` loads the SDK and the local config lazily, so the other editions never run Firebase code.
+
+To update the Firebase SDK (the extension root has no `package.json`; the npm project lives in `tools/`):
+
+```bash
+cd tools/firebase-bundle && npm install && npm run build
 ```
 
 To change the default Ollama model or URL, edit `DEFAULT_OLLAMA_MODEL` / `DEFAULT_OLLAMA_URL` near the top of [sidebar.js](sidebar.js). Nothing else needs to change.
@@ -176,6 +230,7 @@ Run the tests:
 ```bash
 node tests/regression-checks.mjs
 node tests/edition-checks.mjs     # also runs the build
+node tests/firebase-checks.mjs    # firebase-hybrid edition; builds it too
 ```
 
 After you change code, click the ↻ reload button for the extension on `chrome://extensions`, then close and reopen the side panel.

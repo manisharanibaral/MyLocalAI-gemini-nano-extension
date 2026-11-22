@@ -9,6 +9,10 @@
  * so the same code ships as the Nano-only, Ollama-only and mixed editions.
  *
  * Both backends run 100% on-device. Zero cloud.
+ *
+ * Other backends live in their own files and register in window.MYLOCALAI_PROVIDERS
+ * (e.g. firebase-backend.js for the firebase-hybrid edition). sidebar.js reaches them only
+ * through the "EXTERNAL PROVIDER HOOK" section, next to streamNano / streamOllama.
  */
 
 (() => {
@@ -82,6 +86,10 @@
     : ["nano", "ollama"];
   const nanoEnabled = ENABLED_BACKENDS.includes("nano");
   const ollamaEnabled = ENABLED_BACKENDS.includes("ollama");
+  // The first enabled backend that a provider file registered (null in the Nano/Ollama editions).
+  const externalProvider = ENABLED_BACKENDS
+    .map((id) => window.MYLOCALAI_PROVIDERS?.[id])
+    .find(Boolean) || null;
 
   // ===================== STATE =====================
   let lastNanoError = "";
@@ -96,7 +104,7 @@
   let chatSessions = [];       // Array of all saved sessions
   let savedPromptList = [];    // Array of saved system prompts
   let currentSessionId = Date.now().toString();
-  let activeBackend = null;    // "nano" | "ollama" | null
+  let activeBackend = null;    // "nano" | "ollama" | externalProvider.id | null
   let currentContextText = ""; // Context from selected text
   let currentAttachedImage = null; // Base64 string of attached image
   let modelSupportsVision = false;
@@ -506,6 +514,21 @@ Always prefer structured output over plain paragraphs.`;
     setupEventListeners();
     requestPendingSelectedContext();
 
+    // A provider edition (e.g. Firebase hybrid) does its own on-device/cloud routing.
+    if (externalProvider) {
+      try {
+        await initExternalProvider();
+        activeBackend = externalProvider.id;
+        updateBackendUI();
+        hideStatus();
+        refreshAutoScreenshot("open");
+        scheduleIdleUnload();
+        return;
+      } catch (providerErr) {
+        console.warn(`[MyLocalAI] ${externalProvider.id} not available:`, providerErr.message);
+      }
+    }
+
     // Try Gemini Nano first, then Ollama (whichever this edition enables)
     if (nanoEnabled) {
       try {
@@ -548,18 +571,24 @@ Always prefer structured output over plain paragraphs.`;
       ? "Ollama · fallback for non-Chrome browsers"
       : "Ollama";
 
-    if (nanoEnabled && !ollamaEnabled) document.title = "MyLocalAI — Gemini Nano";
+    if (externalProvider) {
+      document.title = externalProvider.describe().title;
+      externalProvider.bindSettingsUI?.();
+    }
+    else if (nanoEnabled && !ollamaEnabled) document.title = "MyLocalAI — Gemini Nano";
     else if (ollamaEnabled && !nanoEnabled) document.title = "MyLocalAI — Ollama";
     else document.title = "MyLocalAI — Local AI Chat";
   }
 
   function initStatusMessage() {
+    if (externalProvider) return externalProvider.statusMessage;
     if (nanoEnabled && !ollamaEnabled) return "Checking Gemini Nano availability";
     if (ollamaEnabled && !nanoEnabled) return "Connecting to Ollama";
     return "Looking for an available AI backend";
   }
 
   function errorTitle() {
+    if (externalProvider) return externalProvider.errorTitle();
     if (nanoEnabled && !ollamaEnabled) return "Gemini Nano Not Available";
     if (ollamaEnabled && !nanoEnabled) return "Can't Reach Ollama";
     return "No AI Backend Found";
@@ -587,6 +616,13 @@ Always prefer structured output over plain paragraphs.`;
         ? `Powered by Ollama (${model}) — routed through Ollama cloud. Fast.`
         : `Powered by Ollama (${model}) — running locally on your machine. Private. Fast.`;
 
+      setAttachAvailable(modelSupportsVision);
+    } else if (isProviderActive()) {
+      const text = externalProvider.describe();
+      headerBadge.textContent = text.badge;
+      headerBadge.style.color = "";
+      backendHint.textContent = text.hint;
+      welcomeSub.textContent = text.welcome;
       setAttachAvailable(modelSupportsVision);
     } else {
       headerBadge.textContent = "Disconnected";
@@ -1098,8 +1134,10 @@ Always prefer structured output over plain paragraphs.`;
     if (isGenerating || isModelUnloaded || !activeBackend) return;
     if (activeBackend === "nano") {
       await destroySession();
-    } else {
+    } else if (activeBackend === "ollama") {
       await unloadOllamaModel();
+    } else if (isProviderActive()) {
+      externalProvider.unload?.();
     }
     isModelUnloaded = true;
     // Chrome frees Nano's RAM only once no session is alive, and then waits its own idle delay
@@ -1218,7 +1256,9 @@ Always prefer structured output over plain paragraphs.`;
       const results = await Promise.allSettled(group.bubbles.map((bubble, i) => {
         const stream = activeBackend === "nano"
           ? streamNano(finalPrompt, bubble, imageToSend, nanoSessions[i])
-          : streamOllama(finalPrompt, bubble, imageToSend);
+          : isProviderActive()
+            ? streamProvider(bubble, imageToSend)
+            : streamOllama(finalPrompt, bubble, imageToSend);
         return stream.finally(() => group.markDone(i));
       }));
       await recordResponses(group, results);
@@ -1422,6 +1462,48 @@ Always prefer structured output over plain paragraphs.`;
 
     finalizeMessage(aiBubble, fullText, reasoningText);
     return { content: fullText, reasoning: reasoningText };
+  }
+
+  // ===================== EXTERNAL PROVIDER HOOK =====================
+  // The only place sidebar.js talks to a provider file (see externalProvider above).
+  // The provider gets the same inputs the built-in backends use and renders through the
+  // same streaming/finalize path, so chat UI, history and multi-answer tabs stay shared.
+  function isProviderActive() {
+    return Boolean(externalProvider) && activeBackend === externalProvider.id;
+  }
+
+  function providerRequestSettings() {
+    return {
+      systemPrompt: sysPromptEl.value.trim() || DEFAULT_SYSTEM_PROMPT,
+      temperature: parseFloat(tempSlider.value),
+      topK: parseInt(topkSlider.value, 10),
+    };
+  }
+
+  async function initExternalProvider() {
+    await externalProvider.init({
+      showProgress: (title, message) => showStatus("loading", title, message),
+      settings: providerRequestSettings(),
+    });
+    modelSupportsVision = externalProvider.supportsImages();
+    modelSupportsThinking = false;
+    isModelUnloaded = false;
+  }
+
+  // chatHistory already ends with the message being answered (sendMessage pushed it).
+  async function streamProvider(aiBubble, attachedImage) {
+    const answer = await externalProvider.stream({
+      history: chatHistory.slice(-MAX_CHAT_MESSAGES),
+      image: attachedImage,
+      signal: abortController.signal,
+      settings: providerRequestSettings(),
+      onText: (text) => {
+        renderStreamingText(aiBubble, text);
+        scrollToBottom();
+      },
+    });
+    finalizeMessage(aiBubble, answer.content, answer.reasoning);
+    return answer;
   }
 
   function stopGeneration() {
@@ -1753,7 +1835,7 @@ Always prefer structured output over plain paragraphs.`;
   }
 
   function canAttachImages() {
-    return (activeBackend === "nano" || activeBackend === "ollama") && modelSupportsVision;
+    return (activeBackend === "nano" || activeBackend === "ollama" || isProviderActive()) && modelSupportsVision;
   }
 
   function base64ToImageBlob(base64) {
@@ -1934,6 +2016,9 @@ Always prefer structured output over plain paragraphs.`;
     } else if (activeBackend === "ollama") {
       tokenInfo.textContent = `${chatHistory.length} messages`;
       tokenInfo.style.color = "";
+    } else if (isProviderActive()) {
+      tokenInfo.textContent = externalProvider.statusLine(chatHistory.length);
+      tokenInfo.style.color = "";
     } else {
       tokenInfo.textContent = "";
       tokenInfo.style.color = "";
@@ -1961,6 +2046,9 @@ Always prefer structured output over plain paragraphs.`;
   }
 
   function getErrorMessage() {
+    // Provider editions explain their own setup (config, on-device model, cloud opt-in).
+    if (externalProvider) return externalProvider.helpLines().join("\n");
+
     // Ollama-only edition: Ollama is the only thing that can be wrong.
     if (!nanoEnabled) return ollamaHelpLines().join("\n");
 

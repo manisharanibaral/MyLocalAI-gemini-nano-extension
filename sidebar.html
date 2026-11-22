@@ -36,6 +36,11 @@
       <h2 id="status-title" class="status-title">Initializing…</h2>
       <p id="status-message" class="status-message">Looking for an available AI backend</p>
       <button id="status-retry-btn" class="btn-retry hidden">Retry</button>
+      <!-- Firebase hybrid edition: shown by firebase-backend.js when on-device Gemini Nano is unavailable. -->
+      <div id="firebase-cloud-optin" class="status-optin hidden">
+        <button id="btn-firebase-enable-cloud" class="btn-retry">Allow cloud fallback &amp; retry</button>
+        <p class="status-optin-note">☁️ Sends your messages to Google's Gemini API via Firebase when on-device isn't available. Change it any time in Settings.</p>
+      </div>
     </div>
   </div>
 
@@ -206,6 +211,37 @@
           </div>
         </section>
 
+        <!-- Firebase hybrid edition only: firebase-backend.js un-hides and wires this card. -->
+        <section id="firebase-settings" class="settings-card hidden" aria-labelledby="firebase-settings-label">
+          <h2 id="firebase-settings-label" class="settings-card-title">Firebase AI Logic · hybrid</h2>
+          <div class="settings-group">
+            <label class="settings-label" for="firebase-route">Where answers run</label>
+            <div class="select-wrap">
+              <select id="firebase-route" class="settings-input">
+                <option value="device">On-device only (default, private)</option>
+                <option value="prefer-device">On-device first, cloud Gemini fallback</option>
+                <option value="prefer-cloud">Cloud Gemini first, on-device fallback</option>
+              </select>
+              <svg class="select-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline points="6 9 12 15 18 9"></polyline>
+              </svg>
+            </div>
+            <p class="settings-hint">☁️ Cloud options send your messages, page context and attached images to Google's Gemini Developer API through Firebase. Off by default.</p>
+          </div>
+          <div class="settings-group">
+            <label class="settings-label" for="firebase-cloud-model">Cloud model</label>
+            <div class="select-wrap">
+              <select id="firebase-cloud-model" class="settings-input">
+                <option value="fast">Fast · gemini-3.5-flash-lite</option>
+                <option value="frontier">Frontier · gemini-4-hydrogen</option>
+              </select>
+              <svg class="select-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline points="6 9 12 15 18 9"></polyline>
+              </svg>
+            </div>
+          </div>
+        </section>
+
       </div>
       <div class="settings-actions">
         <button id="btn-apply-settings" class="btn-apply">Apply &amp; Restart Session</button>
@@ -365,6 +401,8 @@
   <script src="purify.min.js"></script>
   <script src="marked.umd.js"></script>
   <script src="config.js"></script>
+  <!-- Registers optional providers; loads the Firebase SDK only when config.js enables "firebase". -->
+  <script src="firebase-backend.js"></script>
   <script src="sidebar.js"></script>
 </body>
 
