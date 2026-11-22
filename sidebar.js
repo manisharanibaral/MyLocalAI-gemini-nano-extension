@@ -55,6 +55,9 @@
   const btnUploadImg = $("#btn-upload-img");
   const btnScreenshotTab = $("#btn-screenshot-tab");
   const tabScreenshotSelect = $("#tab-screenshot-mode");
+  const screenshotAccessCard = $("#screenshot-access-card");
+  const btnAllowScreenshots = $("#btn-allow-screenshots");
+  const btnDismissScreenshotAccess = $("#btn-dismiss-screenshot-access");
   const imagePreviewText = $(".img-preview-text");
   const fileUpload = $("#file-upload");
   const imagePreviewCard = $("#image-preview-card");
@@ -132,17 +135,20 @@
   let nanoVariantSessions = []; // per-answer Nano sessions of the latest multi-answer reply
 
   // Tab screenshots ("Tab screenshot" setting):
-  //   auto   - on send, attach the open website once per page per chat, skipping search/home pages
-  //   always - on send, attach whatever tab is open, every message
+  //   open   - when the panel opens (or New chat), put the open website in the prompt bar,
+  //            skipping search results and browser/home pages
+  //   follow - keep the prompt bar in step with the tab: every page switched to or loaded
   //   manual - only when the user picks "Screenshot this tab" from the + menu
-  const DEFAULT_TAB_SCREENSHOT_MODE = "auto";
+  const DEFAULT_TAB_SCREENSHOT_MODE = "open";
+  const TAB_CHANGE_SETTLE_MS = 600;
   // captureVisibleTab needs host access. It is optional so installing the extension
   // (especially the Nano edition) asks for no site access; Chrome prompts on first use.
   const TAB_ACCESS = { origins: ["<all_urls>"] };
   // Uploads stay small to save memory; screenshots get more pixels so page text stays readable.
   const MAX_UPLOAD_IMAGE_SIDE = 800;
   const MAX_SCREENSHOT_SIDE = 1280;
-  let lastAutoScreenshotUrl = ""; // page already auto-attached in this chat (auto mode)
+  let lastAutoScreenshotUrl = ""; // page last auto-captured, so the same page isn't re-added
+  let attachedImageIsAuto = false; // true while the pending image is an automatic screenshot
 
   function clampResponseCount(value) {
     const n = parseInt(value, 10);
@@ -285,7 +291,9 @@ Always prefer structured output over plain paragraphs.`;
           const oldHistory = JSON.parse(oldSaved);
           if (oldHistory && oldHistory.length > 0) {
             chatSessions = [{
-              id: currentSessionId,
+              // Own id, not currentSessionId: the fresh chat opened at startup uses that
+              // one and would overwrite the migrated history on its first save.
+              id: `migrated-${Date.now()}`,
               title: extractTitle(oldHistory),
               history: oldHistory,
               timestamp: Date.now()
@@ -359,7 +367,6 @@ Always prefer structured output over plain paragraphs.`;
 
     currentSessionId = sessionToLoad.id;
     chatHistory = [...sessionToLoad.history];
-    lastAutoScreenshotUrl = "";
 
     // Update UI
     messagesEl.innerHTML = "";
@@ -469,7 +476,6 @@ Always prefer structured output over plain paragraphs.`;
     currentSessionId = Date.now().toString();
     clearContext();
     clearAttachedImage();
-    lastAutoScreenshotUrl = ""; // a new chat should see the current page again
     messagesEl.innerHTML = "";
     messagesEl.classList.add("hidden");
     welcomeScreen.classList.remove("hidden");
@@ -481,6 +487,7 @@ Always prefer structured output over plain paragraphs.`;
       }
     } catch (_) { }
     updateTokenInfo();
+    refreshAutoScreenshot("open"); // a new chat starts with the page you're on
   }
 
   // ===================== INIT =====================
@@ -490,12 +497,9 @@ Always prefer structured output over plain paragraphs.`;
   async function init() {
     loadSettings();
     clearTimeout(idleUnloadTimer);
+    // Saved chats stay in History, but opening the panel always starts a fresh chat
+    // (currentSessionId is already a new id), so old context never leaks into a new task.
     loadSessions();
-
-    // Load most recent active session if exists
-    if (chatSessions.length > 0) {
-      loadConversation(chatSessions[0].id);
-    }
     browserName = await detectBrowser();
     applyEditionUI();
     showStatus("loading", "Initializing…", initStatusMessage());
@@ -509,6 +513,7 @@ Always prefer structured output over plain paragraphs.`;
         activeBackend = "nano";
         updateBackendUI();
         hideStatus();
+        refreshAutoScreenshot("open");
         scheduleIdleUnload();
         return;
       } catch (nanoErr) {
@@ -523,6 +528,7 @@ Always prefer structured output over plain paragraphs.`;
         activeBackend = "ollama";
         updateBackendUI();
         hideStatus();
+        refreshAutoScreenshot("open");
         scheduleIdleUnload();
         return;
       } catch (ollamaErr) {
@@ -840,7 +846,11 @@ Always prefer structured output over plain paragraphs.`;
   async function applyNanoParamLimits(lm) {
     if (typeof lm?.params !== "function") return;
     try {
-      const { maxTopK, maxTemperature } = await lm.params();
+      // Chrome resolves params() to null when the model isn't ready on this device yet;
+      // keep the default slider ranges in that case instead of throwing.
+      const limits = await lm.params();
+      if (!limits) return;
+      const { maxTopK, maxTemperature } = limits;
       if (maxTopK > 0) topkSlider.max = String(maxTopK);
       if (maxTemperature > 0) tempSlider.max = String(maxTemperature);
       topkValue.textContent = topkSlider.value;
@@ -1139,7 +1149,6 @@ Always prefer structured output over plain paragraphs.`;
       return;
     }
 
-    if (!currentAttachedImage) await autoAttachTabScreenshot();
     const imageToSend = currentAttachedImage;
     const typedPrompt = text.trim() || "Describe this image.";
     let finalPrompt = typedPrompt;
@@ -1722,6 +1731,7 @@ Always prefer structured output over plain paragraphs.`;
   async function attachImageDataUrl(dataUrl, maxSide, label = "Attached image") {
     const compressed = await compressImageDataUrl(dataUrl, maxSide);
     currentAttachedImage = compressed.split(",")[1];
+    attachedImageIsAuto = false; // automatic callers set it back to true after this
     imagePreviewImg.src = compressed;
     imagePreviewText.textContent = label;
     imagePreviewCard.classList.remove("hidden");
@@ -1733,6 +1743,7 @@ Always prefer structured output over plain paragraphs.`;
     imagePreviewCard.classList.add("hidden");
     imagePreviewImg.src = "";
     imagePreviewText.textContent = "Attached image";
+    attachedImageIsAuto = false;
     fileUpload.value = "";
     if (!userInput.value.trim()) {
       btnSend.disabled = true;
@@ -2097,17 +2108,6 @@ Always prefer structured output over plain paragraphs.`;
     return chrome.permissions.contains(TAB_ACCESS).catch(() => false);
   }
 
-  // Automatic screenshots need site access before the first send. Ask once (on that send's
-  // gesture) instead of on every message, so declining the prompt doesn't nag the user.
-  function askTabAccessForAutoScreenshot() {
-    if (getTabScreenshotMode() === "manual" || !canAttachImages()) return Promise.resolve();
-    try {
-      if (localStorage.getItem("tabAccessAsked")) return Promise.resolve();
-      localStorage.setItem("tabAccessAsked", "1");
-    } catch (_) { /* storage unavailable: still ask */ }
-    return requestTabAccess();
-  }
-
   async function getActiveTab() {
     // In the side panel, "currentWindow" is the window the panel is docked in.
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
@@ -2138,20 +2138,110 @@ Always prefer structured output over plain paragraphs.`;
     await attachImageDataUrl(dataUrl, MAX_SCREENSHOT_SIDE, label);
   }
 
-  // Called by sendMessage when nothing is attached yet. Any failure just sends without a
-  // screenshot: a missing image must never block the user's message.
-  async function autoAttachTabScreenshot() {
+  // Puts a screenshot of the current tab in the prompt bar without being asked.
+  //   trigger "open":       panel opened, backend (re)started or New chat (open + follow modes)
+  //   trigger "tab-change": user switched tab or a page finished loading
+  //                         (follow mode, or open mode before the first prompt)
+  // Failures are silent: an automatic screenshot is a convenience, never an error.
+  async function refreshAutoScreenshot(trigger) {
     const mode = getTabScreenshotMode();
-    if (mode === "manual" || !canAttachImages() || !(await hasTabAccess())) return;
-    try {
-      const tab = await getActiveTab();
-      if (!tab?.url) return;
-      if (mode === "auto" && (!isWebsiteWorthCapturing(tab.url) || tab.url === lastAutoScreenshotUrl)) return;
-      await attachTabScreenshot(tab);
-      lastAutoScreenshotUrl = tab.url;
-    } catch (err) {
-      console.warn("[MyLocalAI] Auto screenshot skipped:", err);
+    if (mode === "manual" || !canAttachImages()) return;
+    if (trigger === "tab-change" && !followsTabChanges(mode)) return;
+    // Never replace an image the user chose themselves.
+    if (currentAttachedImage && !attachedImageIsAuto) return;
+    if (!(await hasTabAccess())) {
+      showScreenshotAccessCard();
+      return;
     }
+    hideScreenshotAccessCard();
+
+    const tab = await getActiveTab().catch(() => null);
+    // Opening/New chat always captures; tab events skip a page that was already captured
+    // (e.g. a reload), which also respects the user removing that page's screenshot.
+    if (!tab?.url || (trigger === "tab-change" && tab.url === lastAutoScreenshotUrl)) return;
+    lastAutoScreenshotUrl = tab.url;
+    if (mode === "open" && !isWebsiteWorthCapturing(tab.url)) {
+      // Switched to a search/browser page before the first prompt: the previous page's
+      // screenshot no longer matches what the user is looking at.
+      if (trigger === "tab-change" && attachedImageIsAuto) clearAttachedImage();
+      return;
+    }
+    try {
+      await attachTabScreenshot(tab);
+      attachedImageIsAuto = true;
+    } catch (err) {
+      // Protected page (New Tab, Web Store…): drop the previous page's screenshot so the
+      // prompt bar doesn't show a page the user has left.
+      if (attachedImageIsAuto) clearAttachedImage();
+      console.warn("[MyLocalAI] Auto screenshot skipped:", err.message || err);
+    }
+  }
+
+  // "On open" means the screenshot shows the page the chat starts from, so until the
+  // first prompt is sent a tab switch still updates it; after that it stays put.
+  function followsTabChanges(mode) {
+    return mode === "follow" || (mode === "open" && chatHistory.length === 0);
+  }
+
+  // captureVisibleTab is limited to ~2 calls per second, and one navigation fires several
+  // tab events, so tab changes are coalesced into one capture after things settle.
+  let tabChangeTimer = null;
+  function scheduleTabChangeScreenshot() {
+    clearTimeout(tabChangeTimer);
+    tabChangeTimer = setTimeout(() => refreshAutoScreenshot("tab-change"), TAB_CHANGE_SETTLE_MS);
+  }
+
+  // Follows tab switches and page loads in the window this panel belongs to.
+  async function watchTabsForScreenshots() {
+    if (!chrome.tabs?.onActivated || !chrome.windows?.getCurrent) return;
+    const panelWindowId = (await chrome.windows.getCurrent()).id;
+    chrome.tabs.onActivated.addListener(({ windowId }) => {
+      if (windowId === panelWindowId) scheduleTabChangeScreenshot();
+    });
+    chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
+      if (changeInfo.status === "complete" && tab.active && tab.windowId === panelWindowId) {
+        scheduleTabChangeScreenshot();
+      }
+    });
+  }
+
+  // Automatic screenshots can't ask for site access themselves (no click to attach the
+  // permission prompt to), so a small card in the prompt bar offers the "Allow" click.
+  function showScreenshotAccessCard() {
+    let dismissed = false;
+    try { dismissed = localStorage.getItem("screenshotAccessDismissed") === "1"; } catch (_) { }
+    screenshotAccessCard.classList.toggle("hidden", dismissed);
+  }
+
+  function hideScreenshotAccessCard() {
+    screenshotAccessCard.classList.add("hidden");
+  }
+
+  async function allowScreenshotsFromCard() {
+    const granted = await requestTabAccess(); // first await: keeps the click's gesture
+    if (!granted) return;
+    hideScreenshotAccessCard();
+    refreshAutoScreenshot("open");
+  }
+
+  // Picking an automatic mode is a click, so it can ask for site access right away and
+  // show the screenshot immediately; it also undoes an earlier "Not now" on the card.
+  async function onTabScreenshotModeChange() {
+    saveSettings();
+    if (getTabScreenshotMode() === "manual") {
+      hideScreenshotAccessCard();
+      if (attachedImageIsAuto) clearAttachedImage();
+      return;
+    }
+    const granted = await requestTabAccess(); // first await: keeps the change event's gesture
+    try { localStorage.removeItem("screenshotAccessDismissed"); } catch (_) { }
+    if (granted) refreshAutoScreenshot("open");
+    else showScreenshotAccessCard();
+  }
+
+  function dismissScreenshotAccessCard() {
+    hideScreenshotAccessCard();
+    try { localStorage.setItem("screenshotAccessDismissed", "1"); } catch (_) { }
   }
 
   // "Screenshot this tab" in the + menu: works on any page Chrome lets us capture.
@@ -2171,12 +2261,6 @@ Always prefer structured output over plain paragraphs.`;
       console.warn("[MyLocalAI] Screenshot failed:", err);
       alert("Chrome doesn't allow screenshots of this page (browser pages like the New Tab or Web Store are protected).");
     }
-  }
-
-  // Send button / Enter. Asks for tab access first because that needs the user's gesture.
-  async function sendFromUser() {
-    await askTabAccessForAutoScreenshot();
-    sendMessage(userInput.value);
   }
 
   // ===================== EVENT LISTENERS =====================
@@ -2213,12 +2297,12 @@ Always prefer structured output over plain paragraphs.`;
       } catch (_) { /* clipboard unavailable */ }
     });
 
-    btnSend.addEventListener("click", sendFromUser);
+    btnSend.addEventListener("click", () => sendMessage(userInput.value));
 
     userInput.addEventListener("keydown", (e) => {
       if (e.key === "Enter" && !e.shiftKey) {
         e.preventDefault();
-        if (!btnSend.disabled && !isGenerating) sendFromUser();
+        if (!btnSend.disabled && !isGenerating) sendMessage(userInput.value);
       }
     });
 
@@ -2370,12 +2454,10 @@ Always prefer structured output over plain paragraphs.`;
     topkSlider.addEventListener("input", () => { topkValue.textContent = topkSlider.value; });
     // Read at send time, so it takes effect without "Apply & Restart".
     responseCountInputs.forEach(input => input.addEventListener("change", saveSettings));
-    // Also read at send time. Switching to an automatic mode is a good moment (and a user
-    // gesture) to ask for the site access screenshots need.
-    tabScreenshotSelect.addEventListener("change", () => {
-      saveSettings();
-      if (getTabScreenshotMode() !== "manual") requestTabAccess();
-    });
+    tabScreenshotSelect.addEventListener("change", onTabScreenshotModeChange);
+    btnAllowScreenshots.addEventListener("click", allowScreenshotsFromCard);
+    btnDismissScreenshotAccess.addEventListener("click", dismissScreenshotAccessCard);
+    watchTabsForScreenshots().catch((err) => console.warn("[MyLocalAI] Tab watching unavailable:", err));
 
     btnApply.addEventListener("click", () => {
       saveSettings();

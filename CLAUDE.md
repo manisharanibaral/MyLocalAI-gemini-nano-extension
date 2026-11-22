@@ -57,4 +57,4 @@ To try changes: load the repo root (the Mixed edition) or a `dist/` folder via `
 
 `README.md` holds the user-facing setup (Chrome flags for Gemini Nano, Ollama CORS via `OLLAMA_ORIGINS` and `set-ollama-cors.plist`); update it when changing editions or setup requirements.
 
-Create new files to keep code organised. 
+Create new files to keep code organised and separated for maintaince and development.

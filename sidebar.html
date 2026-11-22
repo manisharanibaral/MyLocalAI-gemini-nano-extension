@@ -160,35 +160,38 @@
 
         <section class="settings-card" aria-labelledby="settings-context-title">
           <h2 class="settings-card-title" id="settings-context-title">Memory &amp; context</h2>
-          <div class="settings-group">
-            <label class="settings-label" for="idle-unload">Free memory when idle</label>
-            <div class="select-wrap">
-              <select id="idle-unload" class="settings-input">
-                <option value="0">Default (until Chrome quits)</option>
-                <option value="1">After 1 minute</option>
-                <option value="5">After 5 minutes</option>
-                <option value="15">After 15 minutes</option>
-                <option value="30">After 30 minutes</option>
-              </select>
-              <svg class="select-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <polyline points="6 9 12 15 18 9"></polyline>
-              </svg>
+          <div class="settings-row">
+            <div class="settings-group flex-1">
+              <label class="settings-label" for="idle-unload">Free memory when idle</label>
+              <div class="select-wrap">
+                <select id="idle-unload" class="settings-input">
+                  <option value="0">Never (default)</option>
+                  <option value="1">After 1 minute</option>
+                  <option value="5">After 5 minutes</option>
+                  <option value="15">After 15 minutes</option>
+                  <option value="30">After 30 minutes</option>
+                </select>
+                <svg class="select-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <polyline points="6 9 12 15 18 9"></polyline>
+                </svg>
+              </div>
+            </div>
+            <div class="settings-group flex-1">
+              <label class="settings-label" for="tab-screenshot-mode">Add a screenshot of the page</label>
+              <div class="select-wrap">
+                <select id="tab-screenshot-mode" class="settings-input">
+                  <option value="open">On open (default)</option>
+                  <option value="follow">Every page</option>
+                  <option value="manual">Only with +</option>
+                </select>
+                <svg class="select-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <polyline points="6 9 12 15 18 9"></polyline>
+                </svg>
+              </div>
             </div>
           </div>
-          <div class="settings-group">
-            <label class="settings-label" for="tab-screenshot-mode">Tab screenshot</label>
-            <div class="select-wrap">
-              <select id="tab-screenshot-mode" class="settings-input">
-                <option value="auto">Default (websites only, not search or home pages)</option>
-                <option value="always">Always (every message, any page)</option>
-                <option value="manual">Only with the + button</option>
-              </select>
-              <svg class="select-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <polyline points="6 9 12 15 18 9"></polyline>
-              </svg>
-            </div>
-            <p class="settings-hint">Attaches the open tab when you send — once per page by default. Chrome asks for site access the first time.</p>
-          </div>
+          <!-- The hint explains the screenshot modes but spans both columns so neither column grows taller. -->
+          <p class="settings-hint"><b>Never</b> keeps Gemini Nano loaded until Chrome quits. Screenshots — <b>On open</b>: the website you're on appears in the message box when the panel opens or you start a new chat, and follows tab switches until you send the first message (skips search results and New Tab). <b>Every page</b>: updates as you switch tabs or open pages. <b>Only with +</b>: no automatic screenshots. Screenshots stay on your device.</p>
         </section>
 
         <section id="ollama-settings" class="settings-card" aria-labelledby="ollama-settings-label">
@@ -272,6 +275,19 @@
         </span>
         <span id="context-text" class="context-text"></span>
         <button id="btn-clear-context" class="btn-clear-context" title="Clear context" aria-label="Clear context">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+            stroke-linejoin="round">
+            <line x1="18" y1="6" x2="6" y2="18"></line>
+            <line x1="6" y1="6" x2="18" y2="18"></line>
+          </svg>
+        </button>
+      </div>
+
+      <!-- SCREENSHOT ACCESS CARD: automatic screenshots need site access, which needs a click to grant -->
+      <div id="screenshot-access-card" class="context-card screenshot-access-card hidden">
+        <span class="context-text">Add a screenshot of this page to your message automatically?</span>
+        <button id="btn-allow-screenshots" class="btn-card-action" type="button">Allow</button>
+        <button id="btn-dismiss-screenshot-access" class="btn-clear-context" title="Not now" aria-label="Not now">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
             stroke-linejoin="round">
             <line x1="18" y1="6" x2="6" y2="18"></line>

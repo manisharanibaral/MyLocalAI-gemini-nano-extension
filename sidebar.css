@@ -294,6 +294,10 @@ html, body {
 .settings-textarea:focus { outline: none; border-color: var(--border-focus); }
 
 .settings-row { display: flex; gap: 14px; }
+/* Columns push their control to the bottom, so inputs line up even when one
+   label wraps onto two lines; min-width lets long option text shrink. */
+.settings-row > .settings-group { min-width: 0; justify-content: flex-end; }
+select.settings-input { text-overflow: ellipsis; white-space: nowrap; }
 .flex-1 { flex: 1; }
 
 .settings-slider {
@@ -1006,6 +1010,22 @@ hr {
   text-overflow: ellipsis;
   font-style: italic;
 }
+
+/* The access question wraps instead of being cut off: it is the whole point of the card. */
+.screenshot-access-card .context-text { white-space: normal; font-style: normal; }
+.btn-card-action {
+  flex-shrink: 0;
+  padding: 4px 12px;
+  border: none;
+  border-radius: 6px;
+  background: var(--accent-grad);
+  color: #fff;
+  font-family: var(--font);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.btn-card-action:hover { filter: brightness(1.1); }
 
 .btn-clear-context {
   background: none;

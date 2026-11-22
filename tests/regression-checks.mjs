@@ -174,7 +174,7 @@ assert.match(sidebarCss, /\.msg\.ai\s*\{\s*margin-bottom/, "AI responses should 
 
 // Idle unload: the model must be released when idle and brought back on the next send.
 assert.match(sidebarHtml, /<select id="idle-unload"/, "settings should offer an idle-unload dropdown");
-assert.match(sidebarHtml, /<select id="idle-unload"[\s\S]*?<option value="0">Default \(until Chrome quits\)/, "idle-unload dropdown should include the Default (never unload) option");
+assert.match(sidebarHtml, /<select id="idle-unload"[\s\S]*?<option value="0">Never \(default\)/, "idle-unload dropdown should offer Never (keep the model loaded) as default");
 assert.match(sidebarJs, /const DEFAULT_IDLE_UNLOAD_MINUTES = 0;/, "keeping the model loaded (value 0) should be the default idle-unload choice");
 assert.match(functionBody(sidebarJs, "saveSettings"), /idleUnloadMinutes/, "idle-unload choice should be saved");
 assert.match(functionBody(sidebarJs, "loadSettings"), /idleUnloadMinutes/, "idle-unload choice should be restored");
@@ -218,6 +218,14 @@ assert.match(functionBody(sidebarJs, "cloneNanoBaseSession"), /\.clone\(\)/, "ch
 assert.match(functionBody(sidebarJs, "cloneNanoBaseSession"), /watchNanoContextOverflow/, "every chat clone should watch for context overflow");
 assert.match(functionBody(sidebarJs, "startNewChat"), /resetNanoChat\(\)/, "New chat should clone the base session instead of recreating it");
 assert.equal(/initNanoSession/.test(functionBody(sidebarJs, "startNewChat")), false, "New chat should not reload the model");
+{
+  // Every panel open starts a fresh chat; saved chats are only reachable from History.
+  const initBody = functionBody(sidebarJs, "init");
+  assert.equal(/loadConversation\(/.test(initBody), false, "opening the panel must not reload the last chat");
+  assert.match(sidebarJs, /let currentSessionId = Date\.now\(\)\.toString\(\);/, "the startup chat needs its own new id");
+  assert.equal(/id: currentSessionId,\s*title: extractTitle\(oldHistory\)/.test(functionBody(sidebarJs, "loadSessions")), false,
+    "migrated history must not share the startup chat's id");
+}
 assert.match(functionBody(sidebarJs, "loadConversation"), /resetNanoChat\(\)/, "loading a saved chat should reset Nano's context via a clone");
 assert.match(functionBody(sidebarJs, "resetNanoChat"), /!nanoBaseSession\)\s*\{\s*await initNanoSession\(\)/, "resetNanoChat should fall back to a full init when no base exists");
 // After an idle unload, New chat / loading a chat must not pull the model back into RAM:
@@ -247,6 +255,8 @@ assert.match(currentInitNano, /avail === "downloadable"[\s\S]*nanoDownloadExplan
 
 // Device limits and error handling.
 assert.match(functionBody(sidebarJs, "applyNanoParamLimits"), /lm\.params\(\)[\s\S]*maxTopK[\s\S]*maxTemperature/, "slider limits should come from LanguageModel.params()");
+assert.match(functionBody(sidebarJs, "applyNanoParamLimits"), /const limits = await lm\.params\(\);\s*if \(!limits\) return;/,
+  "params() can resolve to null; it must not be destructured directly");
 assert.match(currentInitNano, /applyNanoParamLimits\(lm\)/, "initNanoSession should apply the device's param limits");
 assert.match(functionBody(sidebarJs, "describeNanoPromptError"), /QuotaExceededError/, "an over-long prompt should get a readable error");
 assert.match(functionBody(sidebarJs, "recoverIfNanoModelRemoved"), /isModelUnloaded\s*=\s*true/, "a purged model should be re-initialised on the next send");
@@ -318,27 +328,47 @@ assert.match(sidebarCss, /\.segmented input:checked \+ span/, "the selected coun
 // Attach menu + tab screenshots.
 assert.match(sidebarHtml, /id="btn-attach"[\s\S]*<line x1="12" y1="5" x2="12" y2="19">/, "the attach button should be a plus icon");
 assert.match(sidebarHtml, /id="attach-menu"[\s\S]*id="btn-upload-img"[\s\S]*id="btn-screenshot-tab"/, "the plus menu should offer upload and tab screenshot");
-assert.match(sidebarHtml, /id="tab-screenshot-mode"[\s\S]*value="auto"[\s\S]*value="always"[\s\S]*value="manual"/, "settings should offer the three screenshot modes");
-assert.match(sidebarJs, /DEFAULT_TAB_SCREENSHOT_MODE = "auto"/, "automatic website screenshots are the default");
+assert.match(sidebarHtml, /id="tab-screenshot-mode"[\s\S]*value="open">On open \(default\)[\s\S]*value="follow">Every page<[\s\S]*value="manual">Only with \+/,
+  "settings should offer the three screenshot modes with plain names");
+assert.match(sidebarJs, /DEFAULT_TAB_SCREENSHOT_MODE = "open"/, "screenshot on open is the default");
 assert.deepEqual(manifestJson.optional_host_permissions, ["<all_urls>"], "screenshot site access must stay optional, not an install-time permission");
 assert.equal(manifestJson.permissions.includes("tabs"), false, "host access already exposes the tab URL; no tabs permission needed");
 assert.match(functionBody(sidebarJs, "loadSettings"), /tabScreenshotMode/, "the screenshot mode should be restored");
 assert.match(functionBody(sidebarJs, "saveSettings"), /tabScreenshotMode/, "the screenshot mode should be saved");
 {
-  const send = functionBody(sidebarJs, "sendMessage");
-  assert.match(send, /if \(!currentAttachedImage\) await autoAttachTabScreenshot\(\);\s*const imageToSend = currentAttachedImage;/,
-    "the auto screenshot must be attached before the image is read for sending");
-  const auto = functionBody(sidebarJs, "autoAttachTabScreenshot");
-  assert.match(auto, /mode === "manual"[\s\S]*hasTabAccess\(\)/, "manual mode and missing access should skip auto screenshots");
-  assert.match(auto, /mode === "auto" && \(!isWebsiteWorthCapturing\(tab\.url\) \|\| tab\.url === lastAutoScreenshotUrl\)/,
-    "auto mode should skip non-websites and pages already attached in this chat");
-  assert.match(auto, /catch \(err\)/, "a failed auto screenshot must not block sending");
-  assert.match(functionBody(sidebarJs, "startNewChat"), /lastAutoScreenshotUrl = ""/, "a new chat should re-attach the current page");
+  // The screenshot is shown in the prompt bar ahead of time, not added silently at send.
+  assert.equal(/autoAttachTabScreenshot|sendFromUser/.test(sidebarJs), false, "send-time auto screenshots were replaced by the prompt-bar preview");
+  const initBody = functionBody(sidebarJs, "init");
+  assert.equal((initBody.match(/refreshAutoScreenshot\("open"\)/g) || []).length, 2, "both backends should show the screenshot once ready");
+  assert.match(functionBody(sidebarJs, "startNewChat"), /refreshAutoScreenshot\("open"\)/, "a new chat should show the current page");
+
+  const auto = functionBody(sidebarJs, "refreshAutoScreenshot");
+  assert.match(auto, /mode === "manual"[\s\S]*canAttachImages\(\)/, "manual mode and non-vision models skip auto screenshots");
+  assert.match(auto, /trigger === "tab-change" && !followsTabChanges\(mode\)\) return/, "tab changes go through followsTabChanges");
+  assert.match(functionBody(sidebarJs, "followsTabChanges"), /mode === "follow" \|\| \(mode === "open" && chatHistory\.length === 0\)/,
+    "open mode should follow tab switches until the first prompt is sent");
+  assert.match(auto, /isWebsiteWorthCapturing\(tab\.url\)\) \{[\s\S]*trigger === "tab-change" && attachedImageIsAuto\) clearAttachedImage\(\)/,
+    "switching to a search/browser page before the first prompt should drop the stale screenshot");
+  assert.match(auto, /currentAttachedImage && !attachedImageIsAuto\) return/, "an image the user chose must never be replaced");
+  assert.match(auto, /hasTabAccess\(\)\)\) \{\s*showScreenshotAccessCard\(\)/, "missing access should offer the Allow card");
+  assert.match(auto, /mode === "open" && !isWebsiteWorthCapturing\(tab\.url\)/, "open mode skips search and browser pages");
+  assert.match(auto, /trigger === "tab-change" && tab\.url === lastAutoScreenshotUrl/, "a reload of the same page should not re-add it");
+  assert.match(auto, /catch \(err\) \{[\s\S]*if \(attachedImageIsAuto\) clearAttachedImage\(\)/, "a protected page should drop the stale screenshot");
+
+  const watch = functionBody(sidebarJs, "watchTabsForScreenshots");
+  assert.match(watch, /onActivated[\s\S]*windowId === panelWindowId/, "tab switches are followed only in the panel's window");
+  assert.match(watch, /onUpdated[\s\S]*changeInfo\.status === "complete" && tab\.active/, "page loads in the active tab are followed");
+  assert.match(functionBody(sidebarJs, "scheduleTabChangeScreenshot"), /clearTimeout\(tabChangeTimer\)/, "tab events must be debounced (capture rate limit)");
+  assert.match(setupEventListeners, /watchTabsForScreenshots\(\)/, "tab watching should start with the listeners");
+
   // permissions.request needs the click's gesture, so it has to be the first await.
   assert.match(functionBody(sidebarJs, "screenshotTabFromMenu"), /^\s*closeAttachMenu\(\);\s*const granted = await requestTabAccess\(\);/,
     "the menu screenshot must request access before awaiting anything else");
-  assert.match(functionBody(sidebarJs, "sendFromUser"), /^\s*await askTabAccessForAutoScreenshot\(\);/, "send should ask for access on its gesture");
-  assert.match(setupEventListeners, /btnSend\.addEventListener\("click", sendFromUser\)/, "the send button should go through sendFromUser");
+  assert.match(functionBody(sidebarJs, "allowScreenshotsFromCard"), /^\s*const granted = await requestTabAccess\(\);/, "Allow must request on its click");
+  assert.match(functionBody(sidebarJs, "onTabScreenshotModeChange"), /saveSettings\(\);[\s\S]*const granted = await requestTabAccess\(\);/,
+    "choosing an automatic mode should ask for access");
+  assert.match(sidebarHtml, /id="screenshot-access-card"[\s\S]*id="btn-allow-screenshots"[\s\S]*id="btn-dismiss-screenshot-access"/, "the access card needs Allow and dismiss");
+  assert.match(functionBody(sidebarJs, "clearAttachedImage"), /attachedImageIsAuto = false/, "clearing should reset the auto flag");
   assert.match(functionBody(sidebarJs, "attachTabScreenshot"), /captureVisibleTab\(tab\.windowId/, "screenshots should capture the panel's window");
   assert.match(functionBody(sidebarJs, "setAttachAvailable"), /attachWrap\.classList\.toggle\("hidden", !available\)/, "the + button hides without vision");
 }
@@ -386,6 +416,10 @@ assert.match(sidebarCss, /\.attach-menu\s*\{[^}]*bottom: calc\(100% \+ 8px\)/, "
   assert.match(sidebarCss, /#settings-panel\s*\{[^}]*max-height/, "the settings panel should cap its height");
   assert.match(sidebarCss, /\.settings-scroll\s*\{[^}]*overflow-y: auto/, "the settings body should scroll");
   assert.match(sidebarJs, /modelStatusSpan\.className = "settings-status"/, "the Ollama model status should be styled by class");
+  // Idle-unload and screenshot dropdowns share one two-column row; the hint sits below it.
+  assert.match(panel, /<div class="settings-row">\s*<div class="settings-group flex-1">\s*<label[^>]*for="idle-unload"[\s\S]*?<div class="settings-group flex-1">\s*<label[^>]*for="tab-screenshot-mode"/,
+    "idle-unload and tab screenshot should sit side by side");
+  assert.match(sidebarCss, /\.settings-row > \.settings-group\s*\{[^}]*justify-content: flex-end/, "column controls should align at the bottom");
 }
 
 console.log("Regression checks passed");
