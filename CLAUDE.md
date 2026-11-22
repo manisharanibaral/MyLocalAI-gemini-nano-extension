@@ -56,3 +56,5 @@ To try changes: load the repo root (the Mixed edition) or a `dist/` folder via `
 **Unused file:** `content.js` (answers `GET_SELECTED_TEXT`) is not referenced by `manifest.json` or `SHARED_FILES`, so it never ships; selection capture goes through the context menu in `background.js`. It is only read by `tests/regression-checks.mjs`.
 
 `README.md` holds the user-facing setup (Chrome flags for Gemini Nano, Ollama CORS via `OLLAMA_ORIGINS` and `set-ollama-cors.plist`); update it when changing editions or setup requirements.
+
+Create new files to keep code organised. 

@@ -315,4 +315,77 @@ assert.match(functionBody(sidebarJs, "loadConversation"), /variants\?\.length > 
 assert.match(sidebarCss, /\.variant-tab\.active\s*\{/, "the selected answer tab should be styled");
 assert.match(sidebarCss, /\.segmented input:checked \+ span/, "the selected count should be highlighted");
 
+// Attach menu + tab screenshots.
+assert.match(sidebarHtml, /id="btn-attach"[\s\S]*<line x1="12" y1="5" x2="12" y2="19">/, "the attach button should be a plus icon");
+assert.match(sidebarHtml, /id="attach-menu"[\s\S]*id="btn-upload-img"[\s\S]*id="btn-screenshot-tab"/, "the plus menu should offer upload and tab screenshot");
+assert.match(sidebarHtml, /id="tab-screenshot-mode"[\s\S]*value="auto"[\s\S]*value="always"[\s\S]*value="manual"/, "settings should offer the three screenshot modes");
+assert.match(sidebarJs, /DEFAULT_TAB_SCREENSHOT_MODE = "auto"/, "automatic website screenshots are the default");
+assert.deepEqual(manifestJson.optional_host_permissions, ["<all_urls>"], "screenshot site access must stay optional, not an install-time permission");
+assert.equal(manifestJson.permissions.includes("tabs"), false, "host access already exposes the tab URL; no tabs permission needed");
+assert.match(functionBody(sidebarJs, "loadSettings"), /tabScreenshotMode/, "the screenshot mode should be restored");
+assert.match(functionBody(sidebarJs, "saveSettings"), /tabScreenshotMode/, "the screenshot mode should be saved");
+{
+  const send = functionBody(sidebarJs, "sendMessage");
+  assert.match(send, /if \(!currentAttachedImage\) await autoAttachTabScreenshot\(\);\s*const imageToSend = currentAttachedImage;/,
+    "the auto screenshot must be attached before the image is read for sending");
+  const auto = functionBody(sidebarJs, "autoAttachTabScreenshot");
+  assert.match(auto, /mode === "manual"[\s\S]*hasTabAccess\(\)/, "manual mode and missing access should skip auto screenshots");
+  assert.match(auto, /mode === "auto" && \(!isWebsiteWorthCapturing\(tab\.url\) \|\| tab\.url === lastAutoScreenshotUrl\)/,
+    "auto mode should skip non-websites and pages already attached in this chat");
+  assert.match(auto, /catch \(err\)/, "a failed auto screenshot must not block sending");
+  assert.match(functionBody(sidebarJs, "startNewChat"), /lastAutoScreenshotUrl = ""/, "a new chat should re-attach the current page");
+  // permissions.request needs the click's gesture, so it has to be the first await.
+  assert.match(functionBody(sidebarJs, "screenshotTabFromMenu"), /^\s*closeAttachMenu\(\);\s*const granted = await requestTabAccess\(\);/,
+    "the menu screenshot must request access before awaiting anything else");
+  assert.match(functionBody(sidebarJs, "sendFromUser"), /^\s*await askTabAccessForAutoScreenshot\(\);/, "send should ask for access on its gesture");
+  assert.match(setupEventListeners, /btnSend\.addEventListener\("click", sendFromUser\)/, "the send button should go through sendFromUser");
+  assert.match(functionBody(sidebarJs, "attachTabScreenshot"), /captureVisibleTab\(tab\.windowId/, "screenshots should capture the panel's window");
+  assert.match(functionBody(sidebarJs, "setAttachAvailable"), /attachWrap\.classList\.toggle\("hidden", !available\)/, "the + button hides without vision");
+}
+{
+  // Run the URL filter for real: it decides which pages get auto screenshots.
+  const hostRegex = sidebarJs.match(/const SEARCH_ENGINE_HOST = (\/.+\/i);/)[1];
+  const isWorth = new Function("rawUrl", `
+    const SEARCH_ENGINE_HOST = ${hostRegex};
+    function isSearchOrHomePage(url) {${functionBody(sidebarJs, "isSearchOrHomePage")}}
+    ${functionBody(sidebarJs, "isWebsiteWorthCapturing")}`);
+  const capture = ["https://example.com/article", "https://docs.google.com/document/d/1", "https://mail.google.com/mail/u/0", "http://localhost:3000/"];
+  const skip = ["https://www.google.com/", "https://www.google.co.in/search?q=x", "https://www.bing.com/search?q=x",
+    "https://duckduckgo.com/?q=x", "https://search.brave.com/search?q=x", "chrome://newtab/", "chrome-search://local-ntp/",
+    "about:blank", "edge://settings", "not a url"];
+  for (const url of capture) assert.equal(isWorth(url), true, `auto mode should capture ${url}`);
+  for (const url of skip) assert.equal(isWorth(url), false, `auto mode should skip ${url}`);
+}
+{
+  // History titles must never show the base64 of an attached image.
+  const extractTitle = new Function("history", functionBody(sidebarJs, "extractTitle"));
+  assert.equal(extractTitle([{ role: "user", content: "summarise__IMG__/9j/4AAQSkZJRgABAQ" }]), "summarise");
+  assert.equal(
+    extractTitle([{ role: "user", content: 'Context:\n"""\nx\n"""\n\nUser Question:\nwhat is this__IMG__/9j/4AAQ' }]),
+    "what is this"
+  );
+  assert.match(functionBody(sidebarJs, "renderHistoryList"), /extractTitle\(s\.history\)/, "old saved titles should be recomputed");
+}
+assert.match(sidebarCss, /\.attach-menu\s*\{[^}]*bottom: calc\(100% \+ 8px\)/, "the attach menu should open above the input");
+
+// ===== Settings layout (grouped cards + pinned actions) =====
+{
+  const panel = sidebarHtml.match(/<div id="settings-panel"[\s\S]*?<!-- HISTORY PANEL -->/)[0];
+  const cards = [...panel.matchAll(/<section[^>]*class="settings-card"/g)];
+  assert.equal(cards.length, 4, "settings should be grouped into four cards");
+  assert.match(panel, /<section id="ollama-settings" class="settings-card"/, "the Ollama card must keep the id applyEditionUI hides");
+  assert.match(panel, /id="ollama-settings-label"/, "applyEditionUI renames the Ollama card title by this id");
+  // Apply/Reset live outside the scrolling body so they stay reachable.
+  const scrollEnd = panel.indexOf('<div class="settings-actions">');
+  assert.ok(scrollEnd > 0, "settings should have a pinned actions footer");
+  assert.match(panel.slice(scrollEnd), /id="btn-apply-settings"[\s\S]*id="btn-reset-all"/, "Apply and Reset belong in the footer");
+  for (const id of ["saved-prompts", "sys-prompt", "temp-slider", "temp-value", "topk-slider", "topk-value",
+    "idle-unload", "tab-screenshot-mode", "ollama-model", "ollama-url"]) {
+    assert.ok(panel.slice(0, scrollEnd).includes(`id="${id}"`), `settings body should still contain #${id}`);
+  }
+  assert.match(sidebarCss, /#settings-panel\s*\{[^}]*max-height/, "the settings panel should cap its height");
+  assert.match(sidebarCss, /\.settings-scroll\s*\{[^}]*overflow-y: auto/, "the settings body should scroll");
+  assert.match(sidebarJs, /modelStatusSpan\.className = "settings-status"/, "the Ollama model status should be styled by class");
+}
+
 console.log("Regression checks passed");

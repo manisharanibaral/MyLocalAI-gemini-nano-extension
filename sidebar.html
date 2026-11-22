@@ -90,84 +90,125 @@
     </header>
 
     <!-- SETTINGS PANEL -->
+    <!-- Settings are grouped into cards by what they affect; the action footer stays
+         pinned so "Apply" is reachable without scrolling past every section. -->
     <div id="settings-panel" class="settings-panel hidden">
-      <div class="settings-group">
-        <div class="settings-inline-header">
-          <label class="settings-label" for="saved-prompts">Saved Prompts</label>
-          <button id="btn-save-prompt" class="icon-btn icon-btn-sm" title="Save current prompt"
-            aria-label="Save current prompt">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
-              stroke-linejoin="round">
-              <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path>
-              <polyline points="17 21 17 13 7 13 7 21"></polyline>
-              <polyline points="7 3 7 8 15 8"></polyline>
-            </svg>
-          </button>
-        </div>
-        <div class="select-wrap">
-          <select id="saved-prompts" class="settings-input">
-            <option value="" disabled selected>Select a saved prompt...</option>
-          </select>
-          <svg class="select-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <polyline points="6 9 12 15 18 9"></polyline>
-          </svg>
-        </div>
+      <div class="settings-scroll">
 
-        <label class="settings-label" for="sys-prompt">System Prompt</label>
-        <textarea id="sys-prompt" class="settings-textarea" rows="3"
-          placeholder="e.g. You are a concise coding assistant…"></textarea>
-      </div>
-      <div class="settings-row">
-        <div class="settings-group flex-1">
-          <label class="settings-label" for="temp-slider">Temperature <span id="temp-value"
-              class="settings-value">0.7</span></label>
-          <input id="temp-slider" type="range" min="0" max="1" step="0.1" value="0.7" class="settings-slider" />
-        </div>
-        <div class="settings-group flex-1">
-          <label class="settings-label" for="topk-slider">Top-K <span id="topk-value"
-              class="settings-value">40</span></label>
-          <input id="topk-slider" type="range" min="1" max="100" step="1" value="40" class="settings-slider" />
-        </div>
-      </div>
-      <div class="settings-group">
-        <span class="settings-label" id="response-count-label">Responses at once</span>
-        <!-- Radio inputs styled as a segmented control; sidebar.js reads the checked value. -->
-        <div class="segmented" role="radiogroup" aria-labelledby="response-count-label">
-          <label><input type="radio" name="response-count" value="1" checked /><span>1</span></label>
-          <label><input type="radio" name="response-count" value="2" /><span>2</span></label>
-          <label><input type="radio" name="response-count" value="3" /><span>3</span></label>
-          <label><input type="radio" name="response-count" value="4" /><span>4</span></label>
-          <label><input type="radio" name="response-count" value="5" /><span>5</span></label>
-        </div>
-        <p class="settings-hint">Generates several answers in parallel so you can pick the best one. More answers use more memory and take longer.</p>
-      </div>
-      <div class="settings-group">
-        <label class="settings-label" for="idle-unload">Free memory when idle</label>
-        <select id="idle-unload" class="settings-input">
-          <option value="0">Default (until Chrome quits)</option>
-          <option value="1">After 1 minute</option>
-          <option value="5">After 5 minutes</option>
-          <option value="15">After 15 minutes</option>
-          <option value="30">After 30 minutes</option>
-        </select>
-      </div>
-      <div id="ollama-settings">
-        <div class="settings-divider"></div>
-        <div id="ollama-settings-label" class="settings-section-label">Ollama Fallback (for non-Chrome browsers)</div>
-        <div class="settings-row">
-          <div class="settings-group flex-1">
+        <section class="settings-card" aria-labelledby="settings-prompt-title">
+          <h2 class="settings-card-title" id="settings-prompt-title">Prompt</h2>
+          <div class="settings-group">
+            <div class="settings-label-row">
+              <label class="settings-label" for="saved-prompts">Saved prompts</label>
+              <button id="btn-save-prompt" class="icon-btn icon-btn-sm" title="Save current prompt"
+                aria-label="Save current prompt">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                  stroke-linejoin="round">
+                  <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path>
+                  <polyline points="17 21 17 13 7 13 7 21"></polyline>
+                  <polyline points="7 3 7 8 15 8"></polyline>
+                </svg>
+              </button>
+            </div>
+            <div class="select-wrap">
+              <select id="saved-prompts" class="settings-input">
+                <option value="" disabled selected>Select a saved prompt…</option>
+              </select>
+              <svg class="select-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline points="6 9 12 15 18 9"></polyline>
+              </svg>
+            </div>
+          </div>
+          <div class="settings-group">
+            <label class="settings-label" for="sys-prompt">System prompt</label>
+            <textarea id="sys-prompt" class="settings-textarea" rows="3"
+              placeholder="e.g. You are a concise coding assistant…"></textarea>
+          </div>
+        </section>
+
+        <section class="settings-card" aria-labelledby="settings-generation-title">
+          <h2 class="settings-card-title" id="settings-generation-title">Generation</h2>
+          <div class="settings-row">
+            <div class="settings-group flex-1">
+              <div class="settings-label-row">
+                <label class="settings-label" for="temp-slider">Temperature</label>
+                <span id="temp-value" class="settings-value">0.7</span>
+              </div>
+              <input id="temp-slider" type="range" min="0" max="1" step="0.1" value="0.7" class="settings-slider" />
+            </div>
+            <div class="settings-group flex-1">
+              <div class="settings-label-row">
+                <label class="settings-label" for="topk-slider">Top-K</label>
+                <span id="topk-value" class="settings-value">40</span>
+              </div>
+              <input id="topk-slider" type="range" min="1" max="100" step="1" value="40" class="settings-slider" />
+            </div>
+          </div>
+          <div class="settings-group">
+            <span class="settings-label" id="response-count-label">Responses at once</span>
+            <!-- Radio inputs styled as a segmented control; sidebar.js reads the checked value. -->
+            <div class="segmented" role="radiogroup" aria-labelledby="response-count-label">
+              <label><input type="radio" name="response-count" value="1" checked /><span>1</span></label>
+              <label><input type="radio" name="response-count" value="2" /><span>2</span></label>
+              <label><input type="radio" name="response-count" value="3" /><span>3</span></label>
+              <label><input type="radio" name="response-count" value="4" /><span>4</span></label>
+              <label><input type="radio" name="response-count" value="5" /><span>5</span></label>
+            </div>
+            <p class="settings-hint">Pick the best of several parallel answers. More answers use more memory and take longer.</p>
+          </div>
+        </section>
+
+        <section class="settings-card" aria-labelledby="settings-context-title">
+          <h2 class="settings-card-title" id="settings-context-title">Memory &amp; context</h2>
+          <div class="settings-group">
+            <label class="settings-label" for="idle-unload">Free memory when idle</label>
+            <div class="select-wrap">
+              <select id="idle-unload" class="settings-input">
+                <option value="0">Default (until Chrome quits)</option>
+                <option value="1">After 1 minute</option>
+                <option value="5">After 5 minutes</option>
+                <option value="15">After 15 minutes</option>
+                <option value="30">After 30 minutes</option>
+              </select>
+              <svg class="select-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline points="6 9 12 15 18 9"></polyline>
+              </svg>
+            </div>
+          </div>
+          <div class="settings-group">
+            <label class="settings-label" for="tab-screenshot-mode">Tab screenshot</label>
+            <div class="select-wrap">
+              <select id="tab-screenshot-mode" class="settings-input">
+                <option value="auto">Default (websites only, not search or home pages)</option>
+                <option value="always">Always (every message, any page)</option>
+                <option value="manual">Only with the + button</option>
+              </select>
+              <svg class="select-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline points="6 9 12 15 18 9"></polyline>
+              </svg>
+            </div>
+            <p class="settings-hint">Attaches the open tab when you send — once per page by default. Chrome asks for site access the first time.</p>
+          </div>
+        </section>
+
+        <section id="ollama-settings" class="settings-card" aria-labelledby="ollama-settings-label">
+          <h2 id="ollama-settings-label" class="settings-card-title">Ollama · fallback for non-Chrome browsers</h2>
+          <div class="settings-group">
             <label class="settings-label" for="ollama-model">Model</label>
             <!-- value/placeholder are filled from DEFAULT_OLLAMA_* in sidebar.js -->
             <input id="ollama-model" type="text" class="settings-input" />
           </div>
-          <div class="settings-group flex-1">
-            <label class="settings-label" for="ollama-url">Ollama URL</label>
+          <div class="settings-group">
+            <label class="settings-label" for="ollama-url">Server URL</label>
             <input id="ollama-url" type="text" class="settings-input" />
           </div>
-        </div>
+        </section>
+
       </div>
-      <button id="btn-apply-settings" class="btn-apply">Apply & Restart Session</button>
-      <button id="btn-reset-all" class="btn-reset">Reset All Data & Settings</button>
+      <div class="settings-actions">
+        <button id="btn-apply-settings" class="btn-apply">Apply &amp; Restart Session</button>
+        <button id="btn-reset-all" class="btn-reset">Reset all data &amp; settings</button>
+      </div>
     </div>
 
     <!-- HISTORY PANEL -->
@@ -255,15 +296,37 @@
       </div>
 
       <div class="input-wrap">
-        <button id="btn-upload-img" class="icon-btn icon-btn-input" title="Upload Image"
-          aria-label="Upload Image">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
-            stroke-linejoin="round">
-            <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
-            <circle cx="8.5" cy="8.5" r="1.5"></circle>
-            <polyline points="21 15 16 10 5 21"></polyline>
-          </svg>
-        </button>
+        <!-- The plus button opens the attach menu (upload an image / screenshot the current tab). -->
+        <div id="attach-wrap" class="attach-wrap">
+          <button id="btn-attach" class="icon-btn icon-btn-input" title="Add image" aria-label="Add image"
+            aria-haspopup="menu" aria-expanded="false" aria-controls="attach-menu">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+              stroke-linejoin="round">
+              <line x1="12" y1="5" x2="12" y2="19"></line>
+              <line x1="5" y1="12" x2="19" y2="12"></line>
+            </svg>
+          </button>
+          <div id="attach-menu" class="attach-menu hidden" role="menu">
+            <button id="btn-upload-img" class="attach-menu-item" role="menuitem">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                stroke-linejoin="round">
+                <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+                <circle cx="8.5" cy="8.5" r="1.5"></circle>
+                <polyline points="21 15 16 10 5 21"></polyline>
+              </svg>
+              Upload image
+            </button>
+            <button id="btn-screenshot-tab" class="attach-menu-item" role="menuitem">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                stroke-linejoin="round">
+                <rect x="2" y="4" width="20" height="14" rx="2"></rect>
+                <line x1="8" y1="21" x2="16" y2="21"></line>
+                <line x1="12" y1="18" x2="12" y2="21"></line>
+              </svg>
+              Screenshot this tab
+            </button>
+          </div>
+        </div>
         <input type="file" id="file-upload" accept="image/*" hidden />
         <textarea id="user-input" class="user-input" rows="1" placeholder="Ask anything…" autocomplete="off"></textarea>
         <button id="btn-send" class="btn-send" title="Send" aria-label="Send message" disabled>

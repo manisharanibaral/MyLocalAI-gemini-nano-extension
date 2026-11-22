@@ -49,7 +49,13 @@
   const btnHistory = $("#btn-history");
   const historyPanel = $("#history-panel");
   const historyList = $("#history-list");
+  const attachWrap = $("#attach-wrap");
+  const btnAttach = $("#btn-attach");
+  const attachMenu = $("#attach-menu");
   const btnUploadImg = $("#btn-upload-img");
+  const btnScreenshotTab = $("#btn-screenshot-tab");
+  const tabScreenshotSelect = $("#tab-screenshot-mode");
+  const imagePreviewText = $(".img-preview-text");
   const fileUpload = $("#file-upload");
   const imagePreviewCard = $("#image-preview-card");
   const imagePreviewImg = $("#image-preview-img");
@@ -125,6 +131,19 @@
   const MAX_RESPONSE_COUNT = 5;
   let nanoVariantSessions = []; // per-answer Nano sessions of the latest multi-answer reply
 
+  // Tab screenshots ("Tab screenshot" setting):
+  //   auto   - on send, attach the open website once per page per chat, skipping search/home pages
+  //   always - on send, attach whatever tab is open, every message
+  //   manual - only when the user picks "Screenshot this tab" from the + menu
+  const DEFAULT_TAB_SCREENSHOT_MODE = "auto";
+  // captureVisibleTab needs host access. It is optional so installing the extension
+  // (especially the Nano edition) asks for no site access; Chrome prompts on first use.
+  const TAB_ACCESS = { origins: ["<all_urls>"] };
+  // Uploads stay small to save memory; screenshots get more pixels so page text stays readable.
+  const MAX_UPLOAD_IMAGE_SIDE = 800;
+  const MAX_SCREENSHOT_SIDE = 1280;
+  let lastAutoScreenshotUrl = ""; // page already auto-attached in this chat (auto mode)
+
   function clampResponseCount(value) {
     const n = parseInt(value, 10);
     if (!Number.isFinite(n)) return DEFAULT_RESPONSE_COUNT;
@@ -143,8 +162,7 @@
 
   // Create span for model status in settings
   const modelStatusSpan = document.createElement("span");
-  modelStatusSpan.style.fontSize = "11px";
-  modelStatusSpan.style.marginLeft = "8px";
+  modelStatusSpan.className = "settings-status";
   document.querySelector('label[for="ollama-model"]')?.appendChild(modelStatusSpan);
 
   const DEFAULT_SYSTEM_PROMPT = `You are MyLocalAI, a helpful and friendly assistant. Follow these formatting rules:
@@ -190,8 +208,13 @@ Always prefer structured output over plain paragraphs.`;
     ollamaUrlInput.value = ollamaUrlInput.placeholder = DEFAULT_OLLAMA_URL;
     idleUnloadSelect.value = String(DEFAULT_IDLE_UNLOAD_MINUTES);
     setResponseCount(DEFAULT_RESPONSE_COUNT);
+    tabScreenshotSelect.value = DEFAULT_TAB_SCREENSHOT_MODE;
 
     try {
+      const savedScreenshotMode = localStorage.getItem("tabScreenshotMode");
+      if (savedScreenshotMode !== null && [...tabScreenshotSelect.options].some(o => o.value === savedScreenshotMode)) {
+        tabScreenshotSelect.value = savedScreenshotMode;
+      }
       const savedCount = localStorage.getItem("responseCount");
       if (savedCount !== null) setResponseCount(savedCount);
       const savedIdle = localStorage.getItem("idleUnloadMinutes");
@@ -243,6 +266,7 @@ Always prefer structured output over plain paragraphs.`;
       localStorage.setItem("ollamaUrl", ollamaUrlInput.value);
       localStorage.setItem("idleUnloadMinutes", idleUnloadSelect.value);
       localStorage.setItem("responseCount", String(getResponseCount()));
+      localStorage.setItem("tabScreenshotMode", tabScreenshotSelect.value);
     } catch (e) {
       console.warn("[MyLocalAI] Could not save settings", e);
     }
@@ -320,7 +344,8 @@ Always prefer structured output over plain paragraphs.`;
   function extractTitle(history) {
     const firstUserMsg = history.find(m => m.role === "user");
     if (!firstUserMsg) return "New Chat";
-    let content = firstUserMsg.content;
+    // Image messages are stored as "<text>__IMG__<base64>"; only the text belongs in a title.
+    let content = firstUserMsg.content.split("__IMG__")[0];
     if (content.includes("User Question:\n")) {
       content = content.split("User Question:\n")[1];
     }
@@ -334,6 +359,7 @@ Always prefer structured output over plain paragraphs.`;
 
     currentSessionId = sessionToLoad.id;
     chatHistory = [...sessionToLoad.history];
+    lastAutoScreenshotUrl = "";
 
     // Update UI
     messagesEl.innerHTML = "";
@@ -385,8 +411,10 @@ Always prefer structured output over plain paragraphs.`;
       
       const titleDiv = document.createElement("div");
       titleDiv.className = "history-item-title";
-      titleDiv.title = s.title;
-      titleDiv.textContent = s.title;
+      // Recompute from history so chats saved before titles were cleaned don't show image data.
+      const title = s.history?.length ? extractTitle(s.history) : s.title;
+      titleDiv.title = title;
+      titleDiv.textContent = title;
       
       const dateDiv = document.createElement("div");
       dateDiv.className = "history-item-date";
@@ -441,6 +469,7 @@ Always prefer structured output over plain paragraphs.`;
     currentSessionId = Date.now().toString();
     clearContext();
     clearAttachedImage();
+    lastAutoScreenshotUrl = ""; // a new chat should see the current page again
     messagesEl.innerHTML = "";
     messagesEl.classList.add("hidden");
     welcomeScreen.classList.remove("hidden");
@@ -510,7 +539,7 @@ Always prefer structured output over plain paragraphs.`;
   function applyEditionUI() {
     ollamaSettings.classList.toggle("hidden", !ollamaEnabled);
     ollamaSettingsLabel.textContent = nanoEnabled
-      ? "Ollama Fallback (for non-Chrome browsers)"
+      ? "Ollama · fallback for non-Chrome browsers"
       : "Ollama";
 
     if (nanoEnabled && !ollamaEnabled) document.title = "MyLocalAI — Gemini Nano";
@@ -539,10 +568,7 @@ Always prefer structured output over plain paragraphs.`;
         ? "Gemini Nano · 100% on-device · images"
         : "Gemini Nano · 100% on-device";
       welcomeSub.textContent = "Powered by Gemini Nano — running entirely on your device. Private. Fast. Offline.";
-      btnUploadImg.style.display = modelSupportsVision ? "block" : "none";
-      if (!modelSupportsVision) {
-        clearAttachedImage();
-      }
+      setAttachAvailable(modelSupportsVision);
     } else if (activeBackend === "ollama") {
       const model = getOllamaModel();
       const statusText = isOllamaModelValid ? "" : " ⚠️ (Not a locall model)";
@@ -555,15 +581,12 @@ Always prefer structured output over plain paragraphs.`;
         ? `Powered by Ollama (${model}) — routed through Ollama cloud. Fast.`
         : `Powered by Ollama (${model}) — running locally on your machine. Private. Fast.`;
 
-      btnUploadImg.style.display = modelSupportsVision ? "block" : "none";
-      if (!modelSupportsVision) {
-        clearAttachedImage();
-      }
+      setAttachAvailable(modelSupportsVision);
     } else {
       headerBadge.textContent = "Disconnected";
       headerBadge.style.color = "";
       backendHint.textContent = "No backend available";
-      btnUploadImg.style.display = "none";
+      setAttachAvailable(false);
     }
   }
 
@@ -1116,6 +1139,7 @@ Always prefer structured output over plain paragraphs.`;
       return;
     }
 
+    if (!currentAttachedImage) await autoAttachTabScreenshot();
     const imageToSend = currentAttachedImage;
     const typedPrompt = text.trim() || "Describe this image.";
     let finalPrompt = typedPrompt;
@@ -1670,50 +1694,45 @@ Always prefer structured output over plain paragraphs.`;
 
     const reader = new FileReader();
     reader.onload = (e) => {
-      const img = new Image();
-      img.onload = () => {
-        const canvas = document.createElement("canvas");
-        const ctx = canvas.getContext("2d");
-
-        // Compression dimensions
-        const MAX_WIDTH = 800;
-        const MAX_HEIGHT = 800;
-        let width = img.width;
-        let height = img.height;
-
-        if (width > height) {
-          if (width > MAX_WIDTH) {
-            height *= MAX_WIDTH / width;
-            width = MAX_WIDTH;
-          }
-        } else {
-          if (height > MAX_HEIGHT) {
-            width *= MAX_HEIGHT / height;
-            height = MAX_HEIGHT;
-          }
-        }
-
-        canvas.width = width;
-        canvas.height = height;
-        ctx.drawImage(img, 0, 0, width, height);
-
-        // Compress to JPEG, quality 0.7
-        const dataUrl = canvas.toDataURL("image/jpeg", 0.7);
-        currentAttachedImage = dataUrl.split(",")[1];
-
-        imagePreviewImg.src = dataUrl;
-        imagePreviewCard.classList.remove("hidden");
-        btnSend.disabled = false;
-      };
-      img.src = e.target.result;
+      attachImageDataUrl(e.target.result, MAX_UPLOAD_IMAGE_SIDE)
+        .catch((err) => console.warn("[MyLocalAI] Could not read image:", err));
     };
     reader.readAsDataURL(file);
+  }
+
+  // Shrinks an image so its longest side is at most maxSide and re-encodes it as JPEG
+  // (quality 0.7) to keep prompts and saved history small.
+  function compressImageDataUrl(dataUrl, maxSide) {
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      img.onload = () => {
+        const scale = Math.min(1, maxSide / Math.max(img.width, img.height));
+        const canvas = document.createElement("canvas");
+        canvas.width = Math.round(img.width * scale);
+        canvas.height = Math.round(img.height * scale);
+        canvas.getContext("2d").drawImage(img, 0, 0, canvas.width, canvas.height);
+        resolve(canvas.toDataURL("image/jpeg", 0.7));
+      };
+      img.onerror = () => reject(new Error("Image could not be decoded"));
+      img.src = dataUrl;
+    });
+  }
+
+  // Makes an image the pending attachment and shows it in the preview card.
+  async function attachImageDataUrl(dataUrl, maxSide, label = "Attached image") {
+    const compressed = await compressImageDataUrl(dataUrl, maxSide);
+    currentAttachedImage = compressed.split(",")[1];
+    imagePreviewImg.src = compressed;
+    imagePreviewText.textContent = label;
+    imagePreviewCard.classList.remove("hidden");
+    btnSend.disabled = isGenerating;
   }
 
   function clearAttachedImage() {
     currentAttachedImage = null;
     imagePreviewCard.classList.add("hidden");
     imagePreviewImg.src = "";
+    imagePreviewText.textContent = "Attached image";
     fileUpload.value = "";
     if (!userInput.value.trim()) {
       btnSend.disabled = true;
@@ -2041,6 +2060,125 @@ Always prefer structured output over plain paragraphs.`;
     });
   }
 
+  // ===================== ATTACH MENU & TAB SCREENSHOTS =====================
+  // The + button only offers image options, so it is hidden when the model has no vision.
+  function setAttachAvailable(available) {
+    attachWrap.classList.toggle("hidden", !available);
+    if (!available) {
+      closeAttachMenu();
+      clearAttachedImage();
+    }
+  }
+
+  function toggleAttachMenu() {
+    const open = attachMenu.classList.toggle("hidden") === false;
+    btnAttach.setAttribute("aria-expanded", String(open));
+    if (open) attachMenu.querySelector(".attach-menu-item")?.focus();
+  }
+
+  function closeAttachMenu() {
+    attachMenu.classList.add("hidden");
+    btnAttach.setAttribute("aria-expanded", "false");
+  }
+
+  function getTabScreenshotMode() {
+    return tabScreenshotSelect.value || DEFAULT_TAB_SCREENSHOT_MODE;
+  }
+
+  // chrome.permissions.request only works during a user gesture, so callers must reach it
+  // straight from a click/keydown handler, before awaiting anything else.
+  function requestTabAccess() {
+    if (!chrome.permissions?.request) return Promise.resolve(false);
+    return chrome.permissions.request(TAB_ACCESS).catch(() => false);
+  }
+
+  function hasTabAccess() {
+    if (!chrome.permissions?.contains) return Promise.resolve(false);
+    return chrome.permissions.contains(TAB_ACCESS).catch(() => false);
+  }
+
+  // Automatic screenshots need site access before the first send. Ask once (on that send's
+  // gesture) instead of on every message, so declining the prompt doesn't nag the user.
+  function askTabAccessForAutoScreenshot() {
+    if (getTabScreenshotMode() === "manual" || !canAttachImages()) return Promise.resolve();
+    try {
+      if (localStorage.getItem("tabAccessAsked")) return Promise.resolve();
+      localStorage.setItem("tabAccessAsked", "1");
+    } catch (_) { /* storage unavailable: still ask */ }
+    return requestTabAccess();
+  }
+
+  async function getActiveTab() {
+    // In the side panel, "currentWindow" is the window the panel is docked in.
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    return tab || null;
+  }
+
+  // Search engines live at their root or under /search; other pages on the same domain
+  // (Gmail, Docs, Maps…) are real content and are still captured.
+  const SEARCH_ENGINE_HOST = /(^|\.)(google|bing|duckduckgo|yahoo|ecosia|search\.brave|startpage)\.[a-z.]+$/i;
+
+  function isSearchOrHomePage(url) {
+    if (!SEARCH_ENGINE_HOST.test(url.hostname)) return false;
+    return url.pathname === "/" || /^\/(search|webhp|web)\b/.test(url.pathname);
+  }
+
+  // Auto mode only captures real websites: browser pages (new tab, settings, home) are
+  // not http(s), and search result pages add noise rather than context.
+  function isWebsiteWorthCapturing(rawUrl) {
+    let url;
+    try { url = new URL(rawUrl); } catch (_) { return false; }
+    if (url.protocol !== "http:" && url.protocol !== "https:") return false;
+    return !isSearchOrHomePage(url);
+  }
+
+  async function attachTabScreenshot(tab) {
+    const dataUrl = await chrome.tabs.captureVisibleTab(tab.windowId, { format: "jpeg", quality: 85 });
+    const label = tab.title ? `Screenshot · ${tab.title}` : "Screenshot of this tab";
+    await attachImageDataUrl(dataUrl, MAX_SCREENSHOT_SIDE, label);
+  }
+
+  // Called by sendMessage when nothing is attached yet. Any failure just sends without a
+  // screenshot: a missing image must never block the user's message.
+  async function autoAttachTabScreenshot() {
+    const mode = getTabScreenshotMode();
+    if (mode === "manual" || !canAttachImages() || !(await hasTabAccess())) return;
+    try {
+      const tab = await getActiveTab();
+      if (!tab?.url) return;
+      if (mode === "auto" && (!isWebsiteWorthCapturing(tab.url) || tab.url === lastAutoScreenshotUrl)) return;
+      await attachTabScreenshot(tab);
+      lastAutoScreenshotUrl = tab.url;
+    } catch (err) {
+      console.warn("[MyLocalAI] Auto screenshot skipped:", err);
+    }
+  }
+
+  // "Screenshot this tab" in the + menu: works on any page Chrome lets us capture.
+  async function screenshotTabFromMenu() {
+    closeAttachMenu();
+    const granted = await requestTabAccess(); // first call, so it still has the click's gesture
+    if (!granted) {
+      alert("MyLocalAI needs permission to see the page to take a screenshot. Nothing leaves your device.");
+      return;
+    }
+    try {
+      const tab = await getActiveTab();
+      if (!tab) throw new Error("No active tab");
+      await attachTabScreenshot(tab);
+      userInput.focus();
+    } catch (err) {
+      console.warn("[MyLocalAI] Screenshot failed:", err);
+      alert("Chrome doesn't allow screenshots of this page (browser pages like the New Tab or Web Store are protected).");
+    }
+  }
+
+  // Send button / Enter. Asks for tab access first because that needs the user's gesture.
+  async function sendFromUser() {
+    await askTabAccessForAutoScreenshot();
+    sendMessage(userInput.value);
+  }
+
   // ===================== EVENT LISTENERS =====================
   function setupEventListeners() {
     if (listenersInitialized) return;
@@ -2075,12 +2213,12 @@ Always prefer structured output over plain paragraphs.`;
       } catch (_) { /* clipboard unavailable */ }
     });
 
-    btnSend.addEventListener("click", () => sendMessage(userInput.value));
+    btnSend.addEventListener("click", sendFromUser);
 
     userInput.addEventListener("keydown", (e) => {
       if (e.key === "Enter" && !e.shiftKey) {
         e.preventDefault();
-        if (!btnSend.disabled && !isGenerating) sendMessage(userInput.value);
+        if (!btnSend.disabled && !isGenerating) sendFromUser();
       }
     });
 
@@ -2089,7 +2227,20 @@ Always prefer structured output over plain paragraphs.`;
       btnSend.disabled = (!userInput.value.trim() && !currentAttachedImage) || isGenerating;
     });
 
-    btnUploadImg.addEventListener("click", () => fileUpload.click());
+    btnAttach.addEventListener("click", toggleAttachMenu);
+    btnUploadImg.addEventListener("click", () => {
+      closeAttachMenu();
+      fileUpload.click();
+    });
+    btnScreenshotTab.addEventListener("click", screenshotTabFromMenu);
+    document.addEventListener("click", (e) => {
+      if (!attachWrap.contains(e.target)) closeAttachMenu();
+    });
+    attachMenu.addEventListener("keydown", (e) => {
+      if (e.key !== "Escape") return;
+      closeAttachMenu();
+      btnAttach.focus();
+    });
 
     fileUpload.addEventListener("change", (e) => {
       if (e.target.files && e.target.files[0]) {
@@ -2219,6 +2370,12 @@ Always prefer structured output over plain paragraphs.`;
     topkSlider.addEventListener("input", () => { topkValue.textContent = topkSlider.value; });
     // Read at send time, so it takes effect without "Apply & Restart".
     responseCountInputs.forEach(input => input.addEventListener("change", saveSettings));
+    // Also read at send time. Switching to an automatic mode is a good moment (and a user
+    // gesture) to ask for the site access screenshots need.
+    tabScreenshotSelect.addEventListener("change", () => {
+      saveSettings();
+      if (getTabScreenshotMode() !== "manual") requestTabAccess();
+    });
 
     btnApply.addEventListener("click", () => {
       saveSettings();

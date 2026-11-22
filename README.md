@@ -130,14 +130,15 @@ Set up **Gemini Nano**, **Ollama**, or both, using the steps above. When the pan
 
 - **Chat:** type a message and press **Enter**. **Shift+Enter** adds a new line. Click ■ to stop a reply.
 - **Ask about a webpage:** select text on any page, right-click, and choose **Use selection as MyLocalAI context**. The text is attached to your next question.
-- **Images:** when the model supports images, an image button appears. You can upload a file, paste an image, or drag one onto the input box.
+- **Images:** when the model supports images, a **+** button appears. It opens a menu to upload an image or take a screenshot of the current tab. You can also paste an image or drag one onto the input box.
+- **Tab screenshots:** by default, sending a message attaches a screenshot of the website you have open (once per page per chat). Search result pages, the New Tab page and other browser pages are skipped. Change this in **Settings → Tab screenshot**: *Always* attaches the open tab on every message, *Only with the + button* turns automatic screenshots off. Screenshots need site access ("Read and change all your data on all websites"); Chrome asks the first time and the image never leaves your device.
 - **History:** the clock icon lists past chats. The pencil icon starts a new chat.
 - **Settings:** the gear icon lets you change the system prompt, save up to 5 prompts, and adjust temperature and top-K. Click **Apply & Restart Session** to use the new settings.
 - **Reset:** Settings → **Reset All Data & Settings** deletes all chats and settings for that edition.
 
 ## Privacy
 
-- **Gemini Nano edition:** has no network permissions at all. Prompts are processed by Chrome on your device.
+- **Gemini Nano edition:** has no network permissions at all (site access is only requested, optionally, for tab screenshots). Prompts are processed by Chrome on your device.
 - **Ollama / Mixed editions:** may only connect to `localhost:11434` (your own Ollama).
 - Chat history is stored in the extension's local storage on your computer. Selected page text is read only when you use the right-click menu.
 
