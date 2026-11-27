@@ -135,7 +135,8 @@ assert.match(sidebarCss, /\.attach-menu\s*\{[^}]*bottom: calc\(100% \+ 8px\)/, "
   // The context card shows as much of the selection as the panel width allows.
   const setCtx = functionBody(sidebarJs, "setContextFromSelection");
   assert.equal(/words\.slice\(0, 3\)/.test(setCtx), false, "the selection preview must not be cut to three words");
-  assert.match(setCtx, /contextPreview\(trimmed\)[\s\S]*contextTextEl\.title = trimmed/, "the card shows the preview and hovers the full text");
+  assert.match(setCtx, /capSelectedText\(trimmed\)[\s\S]*contextPreview\(capped\)[\s\S]*contextTextEl\.title = capped/,
+    "the card previews, and hovers, exactly the text the model will get");
   const preview = new Function("text", `const CONTEXT_PREVIEW_MAX_CHARS = 500;${functionBody(sidebarJs, "contextPreview")}`);
   assert.equal(preview("This app is\n\n great for   buying"), '"This app is great for buying"', "whitespace is flattened, all words kept");
   const long = preview("x".repeat(2000));
@@ -144,4 +145,27 @@ assert.match(sidebarCss, /\.attach-menu\s*\{[^}]*bottom: calc\(100% \+ 8px\)/, "
   assert.match(sidebarCss, /#context-text \{ -webkit-line-clamp: 3;/, "the selection preview clamps at three lines");
   assert.match(sidebarCss, /\.img-preview-text \{ -webkit-line-clamp: 2;/, "the screenshot title clamps at two lines");
   assert.match(functionBody(sidebarJs, "showImagePreview"), /imagePreviewText\.title = label/, "the screenshot title shows in full on hover");
+}
+
+{
+  // A long selection is cut to MAX_CONTEXT_CHARS, on a word boundary, and says so.
+  const cap = new Function("text", `const MAX_CONTEXT_CHARS = 100;${functionSource(sidebarJs, "capSelectedText")}return capSelectedText(text);`);
+  assert.deepEqual(cap("short text"), { text: "short text", cut: null }, "a short selection is kept whole");
+  // "words " is 6 characters, so character 100 falls inside a word.
+  const words = cap("words ".repeat(60).trim());
+  assert.equal(words.text, "words ".repeat(16).trim(), "the cut never splits a word");
+  assert.deepEqual(words.cut, { kept: 95, total: 359 }, "the cut reports kept and total characters");
+  const noSpaces = cap("x".repeat(300));
+  assert.equal(noSpaces.text.length, 100, "text without spaces is cut at the limit");
+  assert.match(functionBody(sidebarJs, "contextCutNote"), /first \$\{cut\.kept[\s\S]*of \$\{cut\.total/, "the note names both sizes");
+  assert.match(functionBody(sidebarJs, "clearContext"), /currentContextCut = null;[\s\S]*contextNoteEl\.classList\.add\("hidden"\)/,
+    "clearing the context hides the note");
+}
+{
+  // The default system prompt is sent every turn, so it must stay small (~100 tokens).
+  const prompt = read("sidebar/core/config.js").match(/DEFAULT_SYSTEM_PROMPT = `([\s\S]*?)`;/)[1];
+  assert.ok(prompt.length <= 520, `the default system prompt grew to ${prompt.length} characters (about ${Math.round(prompt.length / 4)} tokens)`);
+  for (const rule of [/never invent/i, /unsure/i, /user's language/i, /tables/i, /code/i, /numbered steps/i]) {
+    assert.match(prompt, rule, `the short prompt still covers ${rule}`);
+  }
 }

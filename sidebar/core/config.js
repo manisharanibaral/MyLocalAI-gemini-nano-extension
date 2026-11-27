@@ -24,6 +24,22 @@ const getOllamaUrl = () => ollamaUrlInput.value.trim() || DEFAULT_OLLAMA_URL;
 const REQUEST_TIMEOUT_MS = 15000;
 const GENERATION_TIMEOUT_MS = 120000;
 const MAX_CHAT_MESSAGES = 100;
+
+// Ollama's context window, sent as options.num_ctx. Without it Ollama uses its own small
+// default and silently cuts the start of an overlong prompt, which holds the system prompt.
+// The history sent is trimmed to fit this (see ollama-request.js), so nothing is cut there.
+const OLLAMA_CONTEXT_TOKENS = 8192;
+// Room kept for the reply when "Answer length" is Long (no num_predict cap).
+const OLLAMA_REPLY_RESERVE_TOKENS = 2048;
+// A rough cost per image; vision models use about 256 (Gemma) to 576 (LLaVA) tokens each.
+const OLLAMA_TOKENS_PER_IMAGE = 600;
+// Characters per token, used to turn a token budget into characters. English averages about
+// 4; 3 stays on the safe side for code and other languages.
+const CHARS_PER_TOKEN = 3;
+
+// "Thinking" setting (Ollama models that can reason before answering). Off by default:
+// the reasoning is often longer than the answer, so short chats wait for nothing.
+const DEFAULT_OLLAMA_THINKING = "off";
 const MAX_SAVED_SESSIONS = 50;
 const MAX_SAVED_PROMPTS = 5;
 // The model stays in RAM for as long as a session/loaded model exists, so release it when idle.
@@ -51,26 +67,32 @@ const TAB_ACCESS = { origins: ["<all_urls>"] };
 const MAX_UPLOAD_IMAGE_SIDE = 800;
 const MAX_SCREENSHOT_SIDE = 1280;
 
-const DEFAULT_SYSTEM_PROMPT = `You are MyLocalAI, a helpful and friendly assistant. Follow these formatting rules:
+// Selected text sent as context ("Use selection as MyLocalAI context"). About 2k tokens:
+// enough for a few long paragraphs, small enough that a whole selected page does not fill
+// Gemini Nano's context window on the first message and force a new chat.
+const MAX_CONTEXT_CHARS = 8000;
 
-**Structure & Clarity:**
-- Keep answers concise and well-organized.
-- Use **headings** (## / ###) to separate sections in longer responses.
-- Break down complex topics into numbered steps.
+// "Answer length" setting. maxTokens is a hard stop where the backend has one (Ollama's
+// num_predict, Firebase cloud's maxOutputTokens; null = the model's own limit). Chrome's
+// Prompt API has no such option, so the hint added to the system prompt is what keeps
+// Gemini Nano (and the Firebase on-device route) short. The hint asks for less than the
+// cap, so the model normally finishes on its own before the hard stop cuts it off.
+const ANSWER_LENGTHS = {
+  short: { maxTokens: 400, hint: "Keep every answer short: at most a few sentences or a brief list." },
+  normal: { maxTokens: 1500, hint: "" },
+  long: { maxTokens: null, hint: "Give thorough, detailed answers when the question calls for it." },
+};
+const DEFAULT_ANSWER_LENGTH = "normal";
+// Ollama counts a thinking model's reasoning against num_predict, so without this extra
+// room a Short cap could be spent before the visible answer even starts.
+const THINKING_TOKEN_ALLOWANCE = 2048;
 
-**Formatting Rules:**
-- Use **bullet points** (- or *) for listing items, features, pros/cons, or options.
-- Use **tables** (Markdown) when comparing 2+ items, showing specs, or presenting structured data.
-- Use **bold** for key terms and *italics* for emphasis.
-- Use \`inline code\` for commands, filenames, or short code references.
-- Use triple-backtick code blocks with language tags for code snippets.
-- Use > blockquotes for important notes or warnings.
-
-**When to use what:**
-- Comparison? → Table
-- Steps/instructions? → Numbered list
-- Features/options? → Bullet points
-- Data/specs? → Table
-- Code? → Fenced code block with language
-
-Always prefer structured output over plain paragraphs.`;
+// Sent with every message (and every Firebase call), so every token here costs memory on
+// Nano's small context window. Keep it short; add rules only if they change answers.
+const DEFAULT_SYSTEM_PROMPT = `You are MyLocalAI, a helpful, accurate assistant.
+- Answer first, then add only useful detail.
+- Base answers on any shared context, page or image; say if it lacks the answer.
+- If unsure, say so. Never invent facts, numbers, links or quotes.
+- If the request is unclear, ask one short question.
+- Reply in the user's language.
+- Use Markdown: ## headings for long answers, numbered steps, bullet lists, tables for comparisons, fenced code with a language tag.`;

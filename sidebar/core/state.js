@@ -16,9 +16,12 @@ let savedPromptList = [];    // Array of saved system prompts
 // The system prompt in effect: the text box as of the last Apply. Every backend reads this, so
 // an edit (or a picked saved prompt) changes nothing until Apply & Restart.
 let appliedSystemPrompt = "";
+// The "Answer length" in effect (a key of ANSWER_LENGTHS); like the prompt, it changes on Apply.
+let appliedAnswerLength = DEFAULT_ANSWER_LENGTH;
 let currentSessionId = Date.now().toString();
 let activeBackend = null;    // "nano" | "ollama" | externalProvider.id | null
-let currentContextText = ""; // Context from selected text
+let currentContextText = ""; // Context from selected text (at most MAX_CONTEXT_CHARS)
+let currentContextCut = null; // { kept, total } when the selection was longer than the cap
 let attachedImages = [];     // Base64 JPEGs waiting to be sent (several for a full-page screenshot)
 let attachedImagesNote = ""; // tells the model how the images relate; sent along with them
 // While a full-page screenshot is being taken: { cancel, stop } AbortControllers.
@@ -30,6 +33,9 @@ let attachedPage = null;
 let modelSupportsVision = false;
 let modelSupportsThinking = false;
 let isOllamaModelValid = true;
+// Token counts Ollama reported for the latest reply: { chatId, input, output }. chatId keeps
+// one chat's counts from showing in the footer of another.
+let lastOllamaUsage = null;
 let isAutoScrollEnabled = true;
 let lastScrollTop = 0;
 let scrollQueued = false;

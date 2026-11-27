@@ -135,9 +135,7 @@
               <select id="saved-prompts" class="settings-input">
                 <option value="" disabled selected>Select a saved prompt…</option>
               </select>
-              <svg class="select-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <polyline points="6 9 12 15 18 9"></polyline>
-              </svg>
+              <svg class="select-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
             </div>
           </div>
           <div class="settings-group">
@@ -177,6 +175,18 @@
             </div>
             <p class="settings-hint">Pick the best of several parallel answers. More answers use more memory and take longer.</p>
           </div>
+          <div class="settings-group">
+            <label class="settings-label" for="answer-length">Answer length <span class="settings-hint">· used after Apply &amp; Restart</span></label>
+            <div class="select-wrap">
+              <select id="answer-length" class="settings-input">
+                <option value="short">Short</option>
+                <option value="normal" selected>Normal (default)</option>
+                <option value="long">Long</option>
+              </select>
+              <svg class="select-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
+            </div>
+            <p class="settings-hint">Short and Normal stop run-on answers; with the Firebase cloud model that also keeps the cost down.</p>
+          </div>
         </section>
 
         <section class="settings-card" aria-labelledby="settings-context-title">
@@ -192,9 +202,7 @@
                   <option value="15">After 15 minutes</option>
                   <option value="30">After 30 minutes</option>
                 </select>
-                <svg class="select-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <polyline points="6 9 12 15 18 9"></polyline>
-                </svg>
+                <svg class="select-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
               </div>
             </div>
             <div class="settings-group flex-1">
@@ -205,9 +213,7 @@
                   <option value="follow">Every page</option>
                   <option value="manual">Only with +</option>
                 </select>
-                <svg class="select-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <polyline points="6 9 12 15 18 9"></polyline>
-                </svg>
+                <svg class="select-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
               </div>
             </div>
           </div>
@@ -225,6 +231,17 @@
             <label class="settings-label" for="ollama-url">Server URL</label>
             <input id="ollama-url" type="text" class="settings-input" />
           </div>
+          <div class="settings-group">
+            <label class="settings-label" for="ollama-thinking">Thinking</label>
+            <div class="select-wrap">
+              <select id="ollama-thinking" class="settings-input">
+                <option value="off" selected>Off (default)</option>
+                <option value="on">On</option>
+              </select>
+              <svg class="select-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
+            </div>
+            <p class="settings-hint">For models that can reason first (DeepSeek-R1, QwQ, Gemma 4). Slower, but better on hard questions. Used from the next message.</p>
+          </div>
         </section>
 
         <!-- Firebase hybrid edition only: firebase-backend.js un-hides and wires this card. -->
@@ -238,9 +255,7 @@
                 <option value="prefer-device">On-device first, cloud Gemini fallback</option>
                 <option value="prefer-cloud">Cloud Gemini first, on-device fallback</option>
               </select>
-              <svg class="select-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <polyline points="6 9 12 15 18 9"></polyline>
-              </svg>
+              <svg class="select-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
             </div>
             <p class="settings-hint">☁️ Cloud options send your messages, page context and attached images to Google's Gemini Developer API through Firebase. Off by default.</p>
           </div>
@@ -251,9 +266,7 @@
                 <option value="fast">Fast · gemini-3.5-flash-lite</option>
                 <option value="frontier">Frontier · gemini-4-hydrogen</option>
               </select>
-              <svg class="select-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <polyline points="6 9 12 15 18 9"></polyline>
-              </svg>
+              <svg class="select-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
             </div>
           </div>
         </section>
@@ -324,7 +337,10 @@
             <polyline points="10 9 9 9 8 9"></polyline>
           </svg>
         </span>
-        <span id="context-text" class="context-text"></span>
+        <span class="context-body">
+          <span id="context-text" class="context-text"></span>
+          <span id="context-note" class="context-note hidden" role="status"></span>
+        </span>
         <button id="btn-clear-context" class="btn-clear-context" title="Clear context" aria-label="Clear context">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
             stroke-linejoin="round">
@@ -471,6 +487,7 @@
   <script src="sidebar/backends/nano.js"></script>
   <script src="sidebar/backends/nano-memory.js"></script>
   <script src="sidebar/backends/ollama.js"></script>
+  <script src="sidebar/backends/ollama-request.js"></script>
   <script src="sidebar/backends/provider-hook.js"></script>
   <script src="sidebar/backends/lifecycle.js"></script>
   <script src="sidebar/chat/send-message.js"></script>

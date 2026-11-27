@@ -171,6 +171,18 @@ assert.ok(sidebarJs.indexOf("function streamOllama(") < sidebarJs.indexOf("funct
   assert.equal(build(huge).includes("x".repeat(100)), false, "turns past the character budget are dropped");
 }
 
+// ===== "Answer length": the cloud route gets maxOutputTokens only when there is a cap =====
+{
+  const sandbox = { window: {}, console };
+  vm.runInNewContext(backendJs, sandbox);
+  const { cloudGenerationConfig } = sandbox.window.MYLOCALAI_PROVIDERS.firebase;
+  assert.deepEqual({ ...cloudGenerationConfig({ temperature: 0.5, topK: 3, maxOutputTokens: 400 }) },
+    { temperature: 0.5, topK: 3, maxOutputTokens: 400 }, "Short/Normal cap the paid cloud answer");
+  assert.equal("maxOutputTokens" in cloudGenerationConfig({ temperature: 0.5, topK: 3, maxOutputTokens: null }), false,
+    "Long leaves the model's own limit");
+  assert.match(backendJs, /inCloudParams: \{[\s\S]*generationConfig: cloudGenerationConfig\(settings\)/, "the cloud params use it");
+}
+
 // ===== Prompt-bar model switcher: the provider lists its models and applies a choice =====
 {
   const stored = new Map();

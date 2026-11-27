@@ -116,42 +116,11 @@ async function initOllamaSession() {
   console.log(`[MyLocalAI] Ollama ready at ${baseUrl} with model ${model}. Vision: ${modelSupportsVision}, Thinking: ${modelSupportsThinking}`);
 }
 
+// The request body is built in ollama-request.js: trimmed history, images on the newest
+// message only, num_ctx, the answer-length cap and the thinking setting.
 async function ollamaPromptStreaming(text, signal) {
   const baseUrl = getOllamaUrl();
-  const model = getOllamaModel();
-  const systemPrompt = getSystemPrompt();
-
-  // Build messages array for multi-turn conversation. sendMessage() already
-  // stores the current user message before streaming, so chatHistory is the
-  // single source of truth here.
-  const messages = [
-    { role: "system", content: systemPrompt },
-    ...chatHistory.slice(-MAX_CHAT_MESSAGES).map(m => {
-      // Ollama takes a message's images as an array of base64 strings, like history keeps them.
-      if (m.role === "user") {
-        return m.images?.length ? { role: m.role, content: m.content, images: m.images } : { role: m.role, content: m.content };
-      }
-      // Only the selected answer (already in `content`) belongs in the prompt;
-      // the unused alternatives would just waste the model's context.
-      const { variants, selected, ...message } = m;
-      return message;
-    }),
-  ];
-
-  const requestBody = {
-    model,
-    messages,
-    stream: true,
-    options: {
-      temperature: parseFloat(tempSlider.value),
-      top_k: parseInt(topkSlider.value, 10),
-    },
-  };
-
-  // Enable thinking for models that support it
-  if (modelSupportsThinking) {
-    requestBody.think = true;
-  }
+  const requestBody = ollamaRequestBody(getOllamaModel(), chatHistory);
 
   const resp = await fetchWithTimeout(`${baseUrl}/api/chat`, {
     method: "POST",
@@ -198,6 +167,8 @@ async function fetchWithTimeout(url, options = {}, timeoutMs = REQUEST_TIMEOUT_M
 // ── Ollama streaming ──
 async function streamOllama(text, aiBubble) {
   const signal = abortController.signal;
+  const chatId = currentSessionId; // the counts belong to this chat even if the user switches
+
   const body = await ollamaPromptStreaming(text, signal);
   const reader = body.getReader();
   // fetchWithTimeout() stops watching the signal once the reply has started, so Stop must
@@ -206,7 +177,9 @@ async function streamOllama(text, aiBubble) {
   signal.addEventListener("abort", stopReading, { once: true });
   if (signal.aborted) stopReading();
   try {
-    return await readOllamaStream(reader, aiBubble, signal);
+    const answer = await readOllamaStream(reader, aiBubble, signal);
+    rememberOllamaUsage(chatId, answer.usage);
+    return { content: answer.content, reasoning: answer.reasoning };
   } finally {
     signal.removeEventListener("abort", stopReading);
   }
@@ -216,7 +189,7 @@ async function streamOllama(text, aiBubble) {
 // the answer is kept as stopped (see showResponseError) instead of as finished.
 async function readOllamaStream(reader, aiBubble, signal) {
   const decoder = new TextDecoder();
-  const answer = { text: "", reasoning: "", inThinkingTag: false };
+  const answer = { text: "", reasoning: "", inThinkingTag: false, usage: null };
   let buffer = "";
 
   while (true) {
@@ -236,7 +209,7 @@ async function readOllamaStream(reader, aiBubble, signal) {
   buffer.split("\n").forEach(line => consumeOllamaLine(line, answer, aiBubble));
 
   finalizeMessage(aiBubble, answer.text, answer.reasoning);
-  return { content: answer.text, reasoning: answer.reasoning };
+  return { content: answer.text, reasoning: answer.reasoning, usage: answer.usage };
 }
 
 function stoppedByUser() {
@@ -259,6 +232,7 @@ function consumeOllamaLine(line, answer, aiBubble) {
     throw new Error(`Ollama error: ${String(json.error).slice(0, 500)}`);
   }
 
+  answer.usage = ollamaUsageFromFrame(json) || answer.usage;
   answer.reasoning += json.message?.thinking || json.message?.reasoning || "";
 
   if (json.message?.content) {

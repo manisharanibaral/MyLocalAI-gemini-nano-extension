@@ -10,7 +10,25 @@ function autoResizeInput() {
 // ===================== CONTEXT LOGIC =====================
 function clearContext() {
   currentContextText = "";
+  currentContextCut = null;
+  contextNoteEl.classList.add("hidden");
   contextCard.classList.add("hidden");
+}
+
+// Keeps the first MAX_CONTEXT_CHARS of a selection, ending on a word boundary when one is
+// close, so the model never sees half a word. Returns { text, cut } where cut is null when
+// nothing was dropped, else { kept, total } (in characters) for the notes to the user and model.
+function capSelectedText(text) {
+  if (text.length <= MAX_CONTEXT_CHARS) return { text, cut: null };
+  let kept = text.slice(0, MAX_CONTEXT_CHARS);
+  const lastSpace = kept.search(/\s\S*$/);
+  if (lastSpace > MAX_CONTEXT_CHARS * 0.9) kept = kept.slice(0, lastSpace);
+  kept = kept.trimEnd();
+  return { text: kept, cut: { kept: kept.length, total: text.length } };
+}
+
+function contextCutNote(cut) {
+  return `Too long: using the first ${cut.kept.toLocaleString()} of ${cut.total.toLocaleString()} characters.`;
 }
 
 // The card shows as much of the selection as fits: CSS clamps it to a few lines at the
@@ -30,9 +48,13 @@ function setContextFromSelection(text) {
     return;
   }
 
-  currentContextText = trimmed;
-  contextTextEl.textContent = contextPreview(trimmed);
-  contextTextEl.title = trimmed; // hover shows the whole selection
+  const { text: capped, cut } = capSelectedText(trimmed);
+  currentContextText = capped;
+  currentContextCut = cut;
+  contextTextEl.textContent = contextPreview(capped);
+  contextTextEl.title = capped; // hover shows all the text the model will get
+  contextNoteEl.textContent = cut ? contextCutNote(cut) : "";
+  contextNoteEl.classList.toggle("hidden", !cut);
   contextCard.classList.remove("hidden");
 }
 

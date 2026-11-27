@@ -24,6 +24,8 @@ function loadSettings() {
   idleUnloadSelect.value = String(DEFAULT_IDLE_UNLOAD_MINUTES);
   setResponseCount(DEFAULT_RESPONSE_COUNT);
   tabScreenshotSelect.value = DEFAULT_TAB_SCREENSHOT_MODE;
+  answerLengthSelect.value = DEFAULT_ANSWER_LENGTH;
+  ollamaThinkingSelect.value = DEFAULT_OLLAMA_THINKING;
 
   try {
     const savedScreenshotMode = localStorage.getItem("tabScreenshotMode");
@@ -38,10 +40,15 @@ function loadSettings() {
     }
     if (localStorage.getItem("sysPrompt")) sysPromptEl.value = localStorage.getItem("sysPrompt");
     appliedSystemPrompt = sysPromptEl.value;
+    const savedLength = localStorage.getItem("answerLength");
+    if (Object.hasOwn(ANSWER_LENGTHS, savedLength)) answerLengthSelect.value = savedLength;
+    appliedAnswerLength = answerLengthSelect.value;
     if (localStorage.getItem("temp")) tempSlider.value = localStorage.getItem("temp");
     if (localStorage.getItem("topk")) topkSlider.value = localStorage.getItem("topk");
     if (localStorage.getItem("ollamaModel")) ollamaModelInput.value = localStorage.getItem("ollamaModel");
     if (localStorage.getItem("ollamaUrl")) ollamaUrlInput.value = localStorage.getItem("ollamaUrl");
+    const savedThinking = localStorage.getItem("ollamaThinking");
+    if (savedThinking === "on" || savedThinking === "off") ollamaThinkingSelect.value = savedThinking;
 
     tempValue.textContent = tempSlider.value;
     topkValue.textContent = topkSlider.value;
@@ -56,8 +63,24 @@ function loadSettings() {
   }
 }
 
+// The applied prompt (or the default) plus the answer-length hint. The hint is added to
+// custom prompts too, because the length setting applies whatever prompt is in use.
 function getSystemPrompt() {
-  return appliedSystemPrompt.trim() || DEFAULT_SYSTEM_PROMPT;
+  const prompt = appliedSystemPrompt.trim() || DEFAULT_SYSTEM_PROMPT;
+  const { hint } = getAnswerLength();
+  return hint ? `${prompt}\n\n${hint}` : prompt;
+}
+
+function getAnswerLength() {
+  return ANSWER_LENGTHS[appliedAnswerLength] || ANSWER_LENGTHS[DEFAULT_ANSWER_LENGTH];
+}
+
+// The most tokens a reply may use (null = no cap). Thinking models spend part of the
+// budget on reasoning first, so they get THINKING_TOKEN_ALLOWANCE on top.
+function getAnswerTokenCap({ thinking = false } = {}) {
+  const { maxTokens } = getAnswerLength();
+  if (!maxTokens) return null;
+  return thinking ? maxTokens + THINKING_TOKEN_ALLOWANCE : maxTokens;
 }
 
 // Saves one setting that takes effect at once (model switcher, responses at once, screenshot
@@ -72,6 +95,11 @@ function saveSetting(key, value) {
 
 function saveOllamaModelSetting() {
   saveSetting("ollamaModel", ollamaModelInput.value);
+}
+
+// Ollama reads the thinking setting per request, so it takes effect from the next message.
+function saveOllamaThinkingSetting() {
+  saveSetting("ollamaThinking", ollamaThinkingSelect.value);
 }
 
 function saveResponseCountSetting() {
@@ -117,6 +145,7 @@ function renderSavedPrompts() {
 // Apply & Restart: everything in the settings panel takes effect, the system prompt included.
 function saveSettings() {
   appliedSystemPrompt = sysPromptEl.value;
+  if (Object.hasOwn(ANSWER_LENGTHS, answerLengthSelect.value)) appliedAnswerLength = answerLengthSelect.value;
   try {
     localStorage.setItem("sysPrompt", sysPromptEl.value);
     localStorage.setItem("temp", tempSlider.value);
@@ -126,6 +155,7 @@ function saveSettings() {
     localStorage.setItem("idleUnloadMinutes", idleUnloadSelect.value);
     localStorage.setItem("responseCount", String(getResponseCount()));
     localStorage.setItem("tabScreenshotMode", tabScreenshotSelect.value);
+    localStorage.setItem("answerLength", appliedAnswerLength);
   } catch (e) {
     console.warn("[MyLocalAI] Could not save settings", e);
   }

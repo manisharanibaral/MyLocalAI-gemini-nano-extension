@@ -152,13 +152,14 @@ async function assertFailsAndRestores({ onCapture, signal, expected, message }) 
     chatHistory: [{ role: "user", content: "old", images: ["A"] }, { role: "assistant", content: "a" },
       { role: "user", content: "has __IMG__ typed" }, { role: "user", content: "page", images: ["B", "C"] }],
     MAX_CHAT_MESSAGES: 100, tempSlider: { value: "1" }, topkSlider: { value: "3" }, modelSupportsThinking: false,
-    GENERATION_TIMEOUT_MS: 1,
+    GENERATION_TIMEOUT_MS: 1, getAnswerTokenCap: () => null,
     fetchWithTimeout: async (url, options) => { body = JSON.parse(options.body); return { ok: true, body: { getReader() { } } }; },
   });
   await sandbox.ollamaPromptStreaming("page", null);
   assert.deepEqual(body.messages.slice(1).map((m) => [m.content, m.images]),
     [["old", ["A"]], ["a", undefined], ["has __IMG__ typed", undefined], ["page", ["B", "C"]]],
     "typed text that looks like the old image marker stays text");
+  assert.equal("num_predict" in body.options, false, "no answer-length cap means no num_predict");
 }
 {
   // Firebase: one inlineData part per image.

@@ -126,7 +126,8 @@ function updateTokenInfo() {
       tokenInfo.style.color = pct > 85 ? "#F87171" : pct > 65 ? "#FBBF24" : "";
     }
   } else if (activeBackend === "ollama") {
-    tokenInfo.textContent = `${chatHistory.length} messages`;
+    tokenInfo.textContent = ollamaFooterText();
+    tokenInfo.title = `Tokens Ollama read and wrote for the last reply. Its context window is set to ${OLLAMA_CONTEXT_TOKENS.toLocaleString()} tokens.`;
     tokenInfo.style.color = "";
   } else if (isProviderActive()) {
     tokenInfo.textContent = externalProvider.statusLine(chatHistory.length);

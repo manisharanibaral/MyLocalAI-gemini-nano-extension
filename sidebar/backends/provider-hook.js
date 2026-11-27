@@ -14,6 +14,7 @@ function providerRequestSettings() {
     systemPrompt: getSystemPrompt(),
     temperature: parseFloat(tempSlider.value),
     topK: parseInt(topkSlider.value, 10),
+    maxOutputTokens: getAnswerTokenCap(), // null = no cap; providers that cannot cap ignore it
   };
 }
 

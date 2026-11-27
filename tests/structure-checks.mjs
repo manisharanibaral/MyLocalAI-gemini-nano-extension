@@ -102,5 +102,6 @@ function ndjsonStream(frames) {
 await import("./panel/chat-saving.mjs");
 await import("./panel/ollama.mjs");
 await import("./panel/settings.mjs");
+await import("./panel/context-and-length.mjs");
 
 console.log("Structure checks passed");

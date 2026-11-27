@@ -198,6 +198,7 @@ function setupEventListeners() {
   topkSlider.addEventListener("input", () => { topkValue.textContent = topkSlider.value; });
   // Read at send time, so it takes effect without "Apply & Restart".
   responseCountInputs.forEach(input => input.addEventListener("change", saveResponseCountSetting));
+  ollamaThinkingSelect.addEventListener("change", saveOllamaThinkingSetting);
   tabScreenshotSelect.addEventListener("change", onTabScreenshotModeChange);
   btnAllowScreenshots.addEventListener("click", allowScreenshotsFromCard);
   btnDismissScreenshotAccess.addEventListener("click", dismissScreenshotAccessCard);

@@ -23,6 +23,14 @@ async function sendMessage(text) {
   }
 }
 
+// Tells the model when the selection was cut, so it does not treat the start as the whole.
+function selectedContextBlock(text, cut) {
+  const label = cut
+    ? `Context (the first ${cut.kept} of ${cut.total} characters of the selected text):`
+    : "Context:";
+  return `${label}\n"""\n${text}\n"""`;
+}
+
 async function sendMessageNow(text) {
   try {
     await ensureModelLoaded();
@@ -39,7 +47,7 @@ async function sendMessageNow(text) {
   const typedPrompt = text.trim() || (attachedImagesNote ? "Summarise this page." : "Describe this image.");
   const promptPreamble = [];
   if (currentContextText) {
-    promptPreamble.push(`Context:\n"""\n${currentContextText}\n"""`);
+    promptPreamble.push(selectedContextBlock(currentContextText, currentContextCut));
     // Clear context UI after using it
     clearContext();
   }

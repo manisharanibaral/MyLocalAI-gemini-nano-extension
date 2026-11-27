@@ -228,7 +228,7 @@
       inCloudParams: {
         model: CLOUD_MODELS[cloudModelId].id,
         systemInstruction: settings.systemPrompt,
-        generationConfig: { temperature: settings.temperature, topK: settings.topK },
+        generationConfig: cloudGenerationConfig(settings),
       },
       onDeviceParams: {
         createOptions: {
@@ -238,6 +238,14 @@
         },
       },
     };
+  }
+
+  // maxOutputTokens is the "Answer length" cap. The cloud bills per token, so this is where
+  // the cap matters most; null (Long) leaves the model's own limit.
+  function cloudGenerationConfig(settings) {
+    const config = { temperature: settings.temperature, topK: settings.topK };
+    if (settings.maxOutputTokens) config.maxOutputTokens = settings.maxOutputTokens;
+    return config;
   }
 
   // Chrome accepts temperature/topK only together and only within its params() limits;
@@ -485,5 +493,6 @@
     selectModel,
     buildConversationPrompt, // exposed for tests/firebase-checks.mjs
     buildRequest,            // exposed for tests/full-page-checks.mjs
+    cloudGenerationConfig,   // exposed for tests/firebase-checks.mjs
   };
 })();
