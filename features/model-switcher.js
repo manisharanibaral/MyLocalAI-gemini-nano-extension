@@ -3,8 +3,8 @@
  *
  * This file only owns the *presentation*: the pill, the upward menu, keyboard handling and
  * the pure helpers that turn "what models exist" into menu options. It never touches a
- * backend. sidebar.js (or a provider file) decides which models exist and how to switch to
- * one, and hands those in as `loadOptions` / `onSelect`.
+ * backend. sidebar/ui/switch-model.js (or a provider file) decides which models exist and how to
+ * switch to one, and hands those in as `loadOptions` / `onSelect`.
  *
  * An option is { id, label, detail }. `id` is opaque to this file.
  */

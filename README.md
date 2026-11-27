@@ -92,9 +92,9 @@ Hardware Chrome needs for Gemini Nano:
    ```bash
    launchctl setenv OLLAMA_ORIGINS "chrome-extension://YOUR_EXTENSION_ID"
    ```
-   Then quit and reopen the Ollama app. This setting is lost when you restart your Mac. To make it permanent, open [set-ollama-cors.plist](set-ollama-cors.plist), replace `REPLACE_WITH_YOUR_EXTENSION_ID` with your ID, and run:
+   Then quit and reopen the Ollama app. This setting is lost when you restart your Mac. To make it permanent, open [set-ollama-cors.plist](docs/set-ollama-cors.plist), replace `REPLACE_WITH_YOUR_EXTENSION_ID` with your ID, and run:
    ```bash
-   cp set-ollama-cors.plist ~/Library/LaunchAgents/
+   cp docs/set-ollama-cors.plist ~/Library/LaunchAgents/
    launchctl load ~/Library/LaunchAgents/set-ollama-cors.plist
    ```
 
@@ -130,7 +130,7 @@ Set up **Gemini Nano**, **Ollama**, or both, using the steps above. When the pan
 
 **Why it exists (value proposition).** On-device AI is private, free and works offline, but it only runs on some machines: Chrome desktop with enough disk, RAM or VRAM, and a downloaded model. Without it, a local-only assistant simply stops working. This edition keeps MyLocalAI's private-by-default chat and uses **Firebase AI Logic hybrid inference** so one code path serves both cases. Gemini Nano answers on-device when Chrome can run it. When it can't, and only if you allow it, the same request goes to cloud Gemini through Firebase, protected by App Check. Everything else stays the same: page context, tab screenshots, multi-answer replies, history and saved prompts.
 
-**How Firebase AI Logic is used.** [firebase-backend.js](firebase-backend.js) loads the bundled Firebase JS SDK ([vendor/firebase-ai.js](vendor/firebase-ai.js), built from [tools/firebase-bundle](tools/firebase-bundle)). It calls `initializeApp`, `initializeAppCheck`, `getAI(app, { backend: new GoogleAIBackend() })` and `getGenerativeModel(ai, { mode, inCloudParams, onDeviceParams })`, then streams every answer with `generateContentStream`. The footer shows where each answer ran (`response.inferenceSource`).
+**How Firebase AI Logic is used.** [providers/firebase-backend.js](providers/firebase-backend.js) loads the bundled Firebase JS SDK ([vendor/firebase-ai.js](vendor/firebase-ai.js), built from [tools/firebase-bundle](tools/firebase-bundle)). It calls `initializeApp`, `initializeAppCheck`, `getAI(app, { backend: new GoogleAIBackend() })` and `getGenerativeModel(ai, { mode, inCloudParams, onDeviceParams })`, then streams every answer with `generateContentStream`. The footer shows where each answer ran (`response.inferenceSource`).
 
 **Where answers run** (Settings → *Firebase AI Logic · hybrid*):
 
@@ -199,25 +199,32 @@ The four editions share **one codebase**. The only differences between them are:
 Editions are defined in `EDITIONS` in [scripts/build.mjs](scripts/build.mjs). The root `manifest.json` and `config.js` are the Mixed edition, and the build derives the others from them. Make code changes in the root files, then rebuild. Don't edit the `dist/` folders directly (`dist/` is git-ignored).
 
 ```
-├── manifest.json        base manifest (Mixed edition)
-├── config.js            edition config (Mixed edition)
-├── background.js        side panel + right-click menu + page-watcher registration
-├── page-watch.js        reports page scroll and text selection to the panel
-├── sidebar.html/.css/.js chat UI and both AI backends
-├── purify.min.js        DOMPurify (sanitizes rendered Markdown)
-├── marked.umd.js        marked (Markdown parser: tables, lists, code, …)
-├── firebase-backend.js  Firebase AI Logic hybrid provider (firebase-hybrid edition)
+├── manifest.json, config.js   base manifest and edition config (Mixed edition)
+├── sidebar.html               the panel page; its <script> list is the load order
+├── background.js              side panel + right-click menu + page-watcher registration
+├── page-watch.js              reports page scroll and text selection to the panel
 ├── firebase-settings.example.js  placeholder config → copy to firebase-settings.local.js (git-ignored)
-├── vendor/firebase-ai.js bundled Firebase JS SDK (app, app-check, ai)
-├── tools/firebase-bundle/ npm project that rebuilds vendor/firebase-ai.js
-├── scripts/build.mjs    builds dist/mylocalai-{nano,ollama,mixed,firebase-hybrid}
-└── tests/
-    ├── regression-checks.mjs
-    ├── edition-checks.mjs
-    └── firebase-checks.mjs
+├── sidebar/                   the side-panel app
+│   ├── core/                  DOM refs, edition config, shared state, settings, browser detection
+│   ├── backends/              Gemini Nano, Ollama, provider hook, load/unload
+│   ├── chat/                  sending, history, saved chats
+│   ├── ui/                    messages, rendering, status overlay, model switching
+│   ├── attachments/           images and screenshots
+│   ├── events.js              DOM event wiring
+│   └── main.js                startup (loaded last)
+├── features/                  self-contained modules: model switcher pill, full-page capture
+├── providers/                 extra backends: firebase-backend.js (firebase-hybrid edition)
+├── styles/                    the panel's CSS, linked in cascade order
+├── vendor/                    third-party: DOMPurify, marked, bundled Firebase JS SDK
+├── docs/                      hackathon rules, macOS Ollama CORS launch agent
+├── tools/firebase-bundle/     npm project that rebuilds vendor/firebase-ai.js
+├── scripts/build.mjs          builds dist/mylocalai-{nano,ollama,mixed,firebase-hybrid}
+└── tests/                     *-checks.mjs are the entry points; regression/ and helpers/ support them
 ```
 
-Extra backends live in their own file and register in `window.MYLOCALAI_PROVIDERS`. `sidebar.js` reaches them only through its **EXTERNAL PROVIDER HOOK** section (`streamProvider`, next to `streamNano` / `streamOllama`), so the Nano and Ollama paths are unchanged. `firebase-backend.js` loads the SDK and the local config lazily, so the other editions never run Firebase code.
+The files in `sidebar/` are plain scripts (no bundler) that share one global scope: a top-level name must be unique across them, and only `main.js` starts work at load time. To add a file, create it and add its `<script>` tag to `sidebar.html`; keep each file under 500 lines.
+
+Extra backends live in `providers/` and register in `window.MYLOCALAI_PROVIDERS`. The sidebar reaches them only through [sidebar/backends/provider-hook.js](sidebar/backends/provider-hook.js) (`streamProvider`), so the Nano and Ollama paths are unchanged. The Firebase provider loads the SDK and the local config lazily, so the other editions never run Firebase code.
 
 To update the Firebase SDK (the extension root has no `package.json`; the npm project lives in `tools/`):
 
@@ -225,7 +232,7 @@ To update the Firebase SDK (the extension root has no `package.json`; the npm pr
 cd tools/firebase-bundle && npm install && npm run build
 ```
 
-To change the default Ollama model or URL, edit `DEFAULT_OLLAMA_MODEL` / `DEFAULT_OLLAMA_URL` near the top of [sidebar.js](sidebar.js). Nothing else needs to change.
+To change the default Ollama model or URL, edit `DEFAULT_OLLAMA_MODEL` / `DEFAULT_OLLAMA_URL` in [sidebar/core/config.js](sidebar/core/config.js). Nothing else needs to change.
 
 Run the tests:
 
@@ -233,6 +240,8 @@ Run the tests:
 node tests/regression-checks.mjs
 node tests/edition-checks.mjs     # also runs the build
 node tests/firebase-checks.mjs    # firebase-hybrid edition; builds it too
+node tests/full-page-checks.mjs   # full-page screenshot and multi-image messages
+node tests/structure-checks.mjs   # file sizes, load list, and a boot of the panel against fakes
 ```
 
 After you change code, click the ↻ reload button for the extension on `chrome://extensions`, then close and reopen the side panel.

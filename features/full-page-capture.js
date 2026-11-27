@@ -5,8 +5,9 @@
  * page is scrolled one screen at a time and each screen is kept as its own image, at the same
  * size as a normal tab screenshot.
  *
- * sidebar.js calls window.MyLocalAIFullPage.capture(); this file only talks to the page and to
- * chrome.tabs / chrome.scripting. It needs the optional site access to be granted already.
+ * sidebar/attachments/screenshot-actions.js calls window.MyLocalAIFullPage.capture(); this file
+ * only talks to the page and to chrome.tabs / chrome.scripting. It needs the optional site
+ * access to be granted already.
  */
 (() => {
   "use strict";

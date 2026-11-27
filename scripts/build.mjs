@@ -11,7 +11,7 @@
  */
 import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { execFileSync } from "node:child_process";
-import { dirname, join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -19,20 +19,19 @@ const DIST = join(ROOT, "dist");
 
 // Files the extension actually loads at runtime (exported for tests/firebase-checks.mjs).
 export const SHARED_FILES = [
+  // Entry points Chrome loads by path stay in the repo root.
   "background.js",
   "page-watch.js",
   "sidebar.html",
-  "sidebar.css",
-  "sidebar.js",
-  "model-switcher.js",
-  "full-page-capture.js",
-  "purify.min.js",
-  "marked.umd.js",
+  // Whole folders, so a new file in one of them ships without editing this list.
+  "sidebar", // the side-panel app
+  "features", // self-contained modules the panel calls
+  // Extra backends. Inert unless config.js lists them; the Firebase SDK bundle in vendor/
+  // (built by tools/firebase-bundle) is loaded by the provider only then.
+  "providers",
+  "styles",
+  "vendor",
   "icons",
-  // Firebase hybrid provider. Inert unless config.js lists "firebase"; the SDK bundle
-  // (built by tools/firebase-bundle) is loaded by firebase-backend.js only then.
-  "firebase-backend.js",
-  "vendor/firebase-ai.js",
 ];
 
 const OLLAMA_HOSTS = ["http://localhost:11434/*", "http://127.0.0.1:11434/*"];
@@ -116,7 +115,10 @@ function build(edition, { zip }) {
   mkdirSync(outDir, { recursive: true });
 
   for (const file of SHARED_FILES) {
-    cpSync(join(ROOT, file), join(outDir, file), { recursive: true });
+    cpSync(join(ROOT, file), join(outDir, file), {
+      recursive: true,
+      filter: (source) => basename(source) !== ".DS_Store", // macOS clutter in copied folders
+    });
   }
   copyOptionalFiles(edition, spec.optionalFiles ?? [], outDir);
 

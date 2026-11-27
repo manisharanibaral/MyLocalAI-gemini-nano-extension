@@ -1,16 +1,13 @@
 // Checks for "Screenshot whole page" and for sending several images in one message.
 // Unlike the static checks, these execute code: full-page-capture.js runs against a fake page and
-// a fake chrome API, and selected sidebar.js functions run with stubbed surroundings.
+// a fake chrome API, and selected sidebar/ functions run with stubbed surroundings.
 // Nothing here renders a real page or talks to a real model.
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
 import vm from "node:vm";
 import { SHARED_FILES } from "../scripts/build.mjs";
+import { functionSource, read, scriptPaths, sidebarHtml, sidebarJs, sidebarPaths } from "./helpers/sources.mjs";
 
-const read = (path) => readFileSync(new URL(`../${path}`, import.meta.url), "utf8");
-const captureJs = read("full-page-capture.js");
-const sidebarJs = read("sidebar.js");
-const sidebarHtml = read("sidebar.html");
+const captureJs = read("features/full-page-capture.js");
 // Values built inside a vm belong to another realm; copy them before deepEqual.
 const plain = (value) => JSON.parse(JSON.stringify(value));
 
@@ -198,21 +195,9 @@ async function assertFailsAndRestores({ onCapture, signal, expected, message }) 
 }
 
 // ===================== SIDEBAR: SEVERAL IMAGES PER MESSAGE =====================
-// Returns the full source of a sidebar.js function so it can be run with stubs.
-function functionSource(name) {
-  const match = new RegExp(`(async )?function ${name}\\(`).exec(sidebarJs);
-  assert.ok(match, `${name} should exist`);
-  let depth = 0;
-  for (let i = sidebarJs.indexOf(") {", match.index) + 2; i < sidebarJs.length; i += 1) {
-    if (sidebarJs[i] === "{") depth += 1;
-    if (sidebarJs[i] === "}" && --depth === 0) return sidebarJs.slice(match.index, i + 1);
-  }
-  throw new Error(`Could not parse ${name}`);
-}
-
 function loadFunctions(names, stubs) {
   const sandbox = vm.createContext({ console, ...stubs });
-  vm.runInContext(names.map(functionSource).join("\n"), sandbox);
+  vm.runInContext(names.map((name) => functionSource(sidebarJs, name)).join("\n"), sandbox);
   return sandbox;
 }
 
@@ -263,7 +248,7 @@ function loadFunctions(names, stubs) {
 {
   // Firebase: one inlineData part per image.
   const sandbox = { window: {}, console };
-  vm.runInNewContext(read("firebase-backend.js"), sandbox);
+  vm.runInNewContext(read("providers/firebase-backend.js"), sandbox);
   const { buildRequest } = sandbox.window.MYLOCALAI_PROVIDERS.firebase;
   assert.equal(buildRequest("q", []), "q");
   assert.deepEqual(plain(buildRequest("q", ["A", "B"])), ["q",
@@ -322,18 +307,18 @@ function loadFunctions(names, stubs) {
 }
 
 // ===================== WIRING =====================
-assert.ok(SHARED_FILES.includes("full-page-capture.js"), "full-page-capture.js must ship in every edition");
-assert.ok(sidebarHtml.indexOf('src="full-page-capture.js"') > 0 &&
-  sidebarHtml.indexOf('src="full-page-capture.js"') < sidebarHtml.indexOf('src="sidebar.js"'), "it loads before sidebar.js");
+assert.ok(SHARED_FILES.includes("features"), "features/full-page-capture.js must ship in every edition");
+assert.ok(scriptPaths.indexOf("features/full-page-capture.js") >= 0 &&
+  scriptPaths.indexOf("features/full-page-capture.js") < scriptPaths.indexOf(sidebarPaths[0]), "it loads before the sidebar scripts");
 assert.match(sidebarHtml, /id="attach-menu"[\s\S]*id="btn-screenshot-page"[\s\S]*Screenshot whole page/, "the + menu offers the whole page");
 assert.match(sidebarHtml, /id="image-preview-thumbs"/);
 assert.match(sidebarJs, /btnScreenshotPage\.addEventListener\("click", screenshotFullPageFromMenu\)/);
-assert.match(functionSource("screenshotFullPageFromMenu"), /\{\s*closeAttachMenu\(\);\s*const granted = await requestTabAccess\(\);/,
+assert.match(functionSource(sidebarJs, "screenshotFullPageFromMenu"), /\{\s*closeAttachMenu\(\);\s*const granted = await requestTabAccess\(\);/,
   "site access is requested while the click still counts as a user gesture");
-assert.match(functionSource("refreshAutoScreenshot"), /if \(pageCapture\) return;/, "auto screenshots stay out of a running capture");
-assert.match(functionSource("sendMessage"), /isGenerating \|\| pageCapture\) return;/, "Enter can't send half a capture");
-assert.match(functionSource("sendMessage"), /if \(attachedImagesNote\) promptPreamble\.push\(attachedImagesNote\);/, "the model is told the images are one page");
-assert.match(functionSource("processImage"), /if \(pageCapture\) clearAttachedImage\(\);/, "the user's own image cancels a capture");
+assert.match(functionSource(sidebarJs, "refreshAutoScreenshot"), /if \(pageCapture\) return;/, "auto screenshots stay out of a running capture");
+assert.match(functionSource(sidebarJs, "sendMessage"), /isGenerating \|\| pageCapture\) return;/, "Enter can't send half a capture");
+assert.match(functionSource(sidebarJs, "sendMessage"), /if \(attachedImagesNote\) promptPreamble\.push\(attachedImagesNote\);/, "the model is told the images are one page");
+assert.match(functionSource(sidebarJs, "processImage"), /if \(pageCapture\) clearAttachedImage\(\);/, "the user's own image cancels a capture");
 assert.match(read(".githooks/pre-commit"), /node tests\/full-page-checks\.mjs/, "the pre-commit hook should run these checks");
 
 console.log("Full-page checks passed");

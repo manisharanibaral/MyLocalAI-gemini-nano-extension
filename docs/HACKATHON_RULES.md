@@ -98,7 +98,7 @@ or Devpost approve in writing.
 - [ ] A **public GitHub or GitLab repository** with all source, assets and setup
       instructions. It must state the value proposition and show Firebase AI Logic
       **imported and actually called at runtime**; naming it in the README is not enough.
-      Here that is `firebase-backend.js` → `vendor/firebase-ai.js`.
+      Here that is `providers/firebase-backend.js` → `vendor/firebase-ai.js`.
 - [ ] An **open-source licence file**, detectable in the repo's About section. Apache is
       preferred. *An MIT `LICENSE` was added to the fork on 2026-11-22. Apache is preferred, but any
       open-source licence is accepted.*

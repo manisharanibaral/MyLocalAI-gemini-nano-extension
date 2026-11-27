@@ -9,9 +9,9 @@ Write code that other developers can maintain: small, named, single-purpose func
 ## Test and verify before finishing
 
 Before you tell the user a change is done:
-1. Run `node tests/regression-checks.mjs`, `node tests/edition-checks.mjs`, `node tests/firebase-checks.mjs` and `node tests/full-page-checks.mjs`. All must pass. If one fails, fix the cause (or the test, if the change intentionally broke its assumption) and rerun; don't report success on a failing run.
-2. If you changed a function that a regression check reads by name, or added/renamed a runtime file, confirm the build still ships it (`node scripts/build.mjs`, then check `dist/`).
-3. The tests never run the extension in a browser (most are static; `full-page-checks.mjs` executes code against fakes). For UI or backend behaviour changes, say plainly that it was not checked in a browser, and tell the user which edition to reload and what to try.
+1. Run `node tests/regression-checks.mjs`, `node tests/edition-checks.mjs`, `node tests/firebase-checks.mjs`, `node tests/full-page-checks.mjs` and `node tests/structure-checks.mjs`. All must pass. If one fails, fix the cause (or the test, if the change intentionally broke its assumption) and rerun; don't report success on a failing run.
+2. If you changed a function that a check reads by name, or added/renamed a runtime file, confirm the build still ships it (`node scripts/build.mjs`, then check `dist/`).
+3. The tests never run the extension in a browser (most are static; `full-page-checks.mjs` and `structure-checks.mjs` execute code against fakes). For UI or backend behaviour changes, say plainly that it was not checked in a browser, and tell the user which edition to reload and what to try.
 4. Report what you ran and the actual result, including anything you could not verify.
 5. Alway create and edit new tests and verification when you edit or add code
 
@@ -30,38 +30,43 @@ node tests/regression-checks.mjs     # static checks over source files (no brows
 node tests/edition-checks.mjs        # runs the build, then asserts each dist/ edition's config + manifest
 node tests/firebase-checks.mjs       # firebase-hybrid edition: files, SHARED_FILES, manifest, opt-in cloud, prompt builder
 node tests/full-page-checks.mjs      # whole-page screenshot and multi-image messages, run against a fake page + chrome API
+node tests/structure-checks.mjs      # 500-line limit, sidebar.html load list, and a boot of the panel against a fake browser
 
 cd tools/firebase-bundle && npm install && npm run build   # rebuild vendor/firebase-ai.js (only package.json lives here, never in the root)
 ```
 
-Tests are plain `node:assert` scripts, so there is no runner or single-test flag: run one file at a time. They read source files as text (e.g. `functionBody()` extracts a function from `sidebar.js`) rather than executing the extension, so renaming or moving a function in `sidebar.js` can break a regression check.
+Tests are plain `node:assert` scripts, so there is no runner or single-test flag: run one file at a time. Most read source files as text through `tests/helpers/sources.mjs`, which treats the `sidebar/` scripts listed in `sidebar.html` as one source (`functionBody()` extracts a function by name), so moving a function between files is safe but renaming one can break a check. `regression-checks.mjs` only imports the topic files in `tests/regression/`.
 
-**Git hook** (`.githooks/pre-commit`, enabled with `git config core.hooksPath .githooks` — run this once per clone): every commit first runs all four test scripts and is blocked if any fails. On every second commit (by total commit count) it also bumps the patch version in `manifest.json` via `scripts/bump-version.mjs` and stages it.
+**Git hook** (`.githooks/pre-commit`, enabled with `git config core.hooksPath .githooks` — run this once per clone): every commit first runs all five test scripts and is blocked if any fails. On every second commit (by total commit count) it also bumps the patch version in `manifest.json` via `scripts/bump-version.mjs` and stages it.
 
 To try changes: load the repo root (the Mixed edition) or a `dist/` folder via `chrome://extensions` → Load unpacked, then use ↻ on the extension and reopen the side panel.
 
 ## Architecture
 
-**One codebase, four editions** (nano, ollama, mixed, firebase-hybrid). The firebase-hybrid edition uses `backends: ["firebase"]`: `firebase-backend.js` registers a provider in `window.MYLOCALAI_PROVIDERS`, and `sidebar.js` talks to it only through the `EXTERNAL PROVIDER HOOK` section (`streamProvider`). Keep Firebase code out of `sidebar.js`; real Firebase config lives only in the git-ignored `firebase-settings.local.js`. The repo root *is* the Mixed edition (`manifest.json` + `config.js`). `scripts/build.mjs` copies `SHARED_FILES` into each `dist/` folder and generates a per-edition `manifest.json` (overrides in `EDITIONS`: name, description, `host_permissions`, `minimum_chrome_version`) and `config.js` (`window.MYLOCALAI_CONFIG = { edition, backends }`). Consequences:
-- Make changes in root files, never in `dist/` (git-ignored, overwritten on build).
-- A new runtime file must be added to `SHARED_FILES` in `scripts/build.mjs`, or it will not ship in `dist/`.
+**One codebase, four editions** (nano, ollama, mixed, firebase-hybrid). The firebase-hybrid edition uses `backends: ["firebase"]`: `providers/firebase-backend.js` registers a provider in `window.MYLOCALAI_PROVIDERS`, and the sidebar talks to it only through `sidebar/backends/provider-hook.js` (`streamProvider`). Keep Firebase code out of `sidebar/`; real Firebase config lives only in the git-ignored `firebase-settings.local.js`. The repo root *is* the Mixed edition (`manifest.json` + `config.js`). `scripts/build.mjs` copies `SHARED_FILES` into each `dist/` folder and generates a per-edition `manifest.json` (overrides in `EDITIONS`: name, description, `host_permissions`, `minimum_chrome_version`) and `config.js` (`window.MYLOCALAI_CONFIG = { edition, backends }`). Consequences:
+- Make changes in the source files, never in `dist/` (git-ignored, overwritten on build).
+- `SHARED_FILES` lists whole folders (`sidebar/`, `features/`, `providers/`, `styles/`, `vendor/`, `icons/`), so a new file in one ships automatically; a new root file or folder must be added to it.
 - The Nano edition deliberately has no `host_permissions`; don't add network access to shared code paths without considering that.
-- Edition differences belong in `EDITIONS` / `config.js`, not in `if (edition === …)` branches in the UI code. `sidebar.js` only reads `backends` (`nanoEnabled` / `ollamaEnabled`).
+- Edition differences belong in `EDITIONS` / `config.js`, not in `if (edition === …)` branches in the UI code. The sidebar only reads `backends` (`nanoEnabled` / `ollamaEnabled`).
 
 **Runtime pieces**
 - `background.js` (service worker): opens the side panel on action click, registers the right-click "Use selection as MyLocalAI context" menu, and holds the pending selection. It hands text to the panel via a `TEXT_SELECTED` message, or the panel pulls it with `GET_SELECTED_CONTEXT` on load (covers the panel not being open yet).
 - `page-watch.js` (content script): reports `PAGE_SCROLL_SETTLED` (debounced) and `PAGE_TEXT_SELECTED` to the panel. It is never in `manifest.json` (that would make site access install-time); `background.js` registers it with `chrome.scripting` only while optional `<all_urls>` access is granted, and the panel injects it into the already-open tab.
-- `full-page-capture.js`: "Screenshot whole page". Scrolls the tab one screen at a time and returns one image per screen (at most `MAX_PAGE_PARTS`), so text stays readable; its page functions are injected with `chrome.scripting`, so they must be self-contained. Messages hold several images as `<text>__IMG__<base64>__IMG__<base64>…`.
-- `sidebar.html/.css/.js`: the entire chat UI and both AI backends, in a single IIFE in `sidebar.js` (~1.5k lines). Sections are marked with `// ===== NAME =====` banners (DOM refs, edition config, state, settings, sessions/history, backend init, streaming, rendering, event listeners).
+- `features/full-page-capture.js`: "Screenshot whole page". Scrolls the tab one screen at a time and returns one image per screen (at most `MAX_PAGE_PARTS`), so text stays readable; its page functions are injected with `chrome.scripting`, so they must be self-contained. Messages hold several images as `<text>__IMG__<base64>__IMG__<base64>…`.
+- `sidebar.html` + `sidebar/` + `styles/`: the entire chat UI and both built-in backends. `sidebar/` holds classic scripts (not ES modules) that **share one global scope**: `core/` (DOM refs, config, state, settings), `backends/`, `chat/`, `ui/`, `attachments/`, `events.js`, and `main.js`.
+  - The `<script>` list in `sidebar.html` is the load order: `core/` first, `main.js` last. Only `main.js` starts work; other files must not call across files at load time.
+  - Top-level names must be unique across these files, and each file starts with `"use strict"`.
+  - Add a new file by creating it and adding its tag to `sidebar.html`. Every hand-written file stays under 500 lines (`structure-checks.mjs` enforces this).
+- `features/`: self-contained IIFE modules that expose one `window.MyLocalAI…` object. `styles/` is linked in cascade order.
 - Backend selection (`init` → `initNanoSession` / `initOllamaSession`): Nano is tried first when enabled, Ollama is the fallback; `activeBackend` is `"nano" | "ollama" | null` and `updateBackendUI` reflects it. Sending goes through `sendMessage` → `streamNano` or `streamOllama`.
   - Nano uses Chrome's `LanguageModel` Prompt API (session object kept in `session`).
-  - Ollama uses the REST API at `DEFAULT_OLLAMA_URL` with `fetchWithTimeout`; its default model (`DEFAULT_OLLAMA_MODEL`) and URL are defined once near the top of `sidebar.js`.
-- Rendering: `marked.umd.js` parses Markdown and `purify.min.js` (DOMPurify) sanitizes it; route model output through `setSafeHtml`, never assign raw HTML.
+  - Ollama uses the REST API at `DEFAULT_OLLAMA_URL` with `fetchWithTimeout`; its default model (`DEFAULT_OLLAMA_MODEL`) and URL are defined once in `sidebar/core/config.js`.
+- Rendering: `vendor/marked.umd.js` parses Markdown and `vendor/purify.min.js` (DOMPurify) sanitizes it; route model output through `setSafeHtml`, never assign raw HTML.
 - State is persisted in extension storage per edition (chat sessions, saved prompts, settings), so installed editions don't share history.
 
 **Unused file:** `content.js` (answers `GET_SELECTED_TEXT`) is not referenced by `manifest.json` or `SHARED_FILES`, so it never ships; selection capture goes through the context menu in `background.js`. It is only read by `tests/regression-checks.mjs`.
 
-`README.md` holds the user-facing setup (Chrome flags for Gemini Nano, Ollama CORS via `OLLAMA_ORIGINS` and `set-ollama-cors.plist`); update it when changing editions or setup requirements.
+`README.md` holds the user-facing setup (Chrome flags for Gemini Nano, Ollama CORS via `OLLAMA_ORIGINS` and `docs/set-ollama-cors.plist`); update it when changing editions or setup requirements.
 
 Create new files to keep code organised and separated for maintaince and development.
 

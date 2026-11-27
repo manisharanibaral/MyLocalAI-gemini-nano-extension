@@ -1,0 +1,72 @@
+// Every DOM element the panel script uses.
+"use strict";
+
+// ===================== DOM REFS =====================
+const $ = (s) => document.querySelector(s);
+const $$ = (s) => document.querySelectorAll(s);
+
+const statusOverlay = $("#status-overlay");
+const statusSpinner = $("#status-spinner");
+const statusErrIcon = $("#status-error-icon");
+const statusTitle = $("#status-title");
+const statusMessage = $("#status-message");
+const statusRetryBtn = $("#status-retry-btn");
+
+const welcomeScreen = $("#welcome-screen");
+const welcomeSub = $("#welcome-sub");
+const messagesEl = $("#messages");
+const userInput = $("#user-input");
+const btnSend = $("#btn-send");
+const btnStop = $("#btn-stop");
+const contextCard = $("#context-card");
+const contextTextEl = $("#context-text");
+const btnClearContext = $("#btn-clear-context");
+const btnClear = $("#btn-clear");
+const btnSettings = $("#btn-settings");
+const settingsPanel = $("#settings-panel");
+const sysPromptEl = $("#sys-prompt");
+const tempSlider = $("#temp-slider");
+const tempValue = $("#temp-value");
+const topkSlider = $("#topk-slider");
+const topkValue = $("#topk-value");
+const btnApply = $("#btn-apply-settings");
+const btnReset = $("#btn-reset-all");
+const btnSavePrompt = $("#btn-save-prompt");
+const savedPromptsDropdown = $("#saved-prompts");
+const btnHistory = $("#btn-history");
+const historyPanel = $("#history-panel");
+const historyList = $("#history-list");
+const attachWrap = $("#attach-wrap");
+const btnAttach = $("#btn-attach");
+const attachMenu = $("#attach-menu");
+const btnUploadImg = $("#btn-upload-img");
+const btnScreenshotTab = $("#btn-screenshot-tab");
+const btnScreenshotPage = $("#btn-screenshot-page");
+const tabScreenshotSelect = $("#tab-screenshot-mode");
+const screenshotAccessCard = $("#screenshot-access-card");
+const btnAllowScreenshots = $("#btn-allow-screenshots");
+const btnDismissScreenshotAccess = $("#btn-dismiss-screenshot-access");
+const imagePreviewText = $(".img-preview-text");
+const fileUpload = $("#file-upload");
+const imagePreviewCard = $("#image-preview-card");
+const imagePreviewThumbs = $("#image-preview-thumbs");
+const btnClearImage = $("#btn-clear-image");
+const inputBar = document.querySelector(".input-bar");
+const tokenInfo = $("#token-info");
+const headerBadge = $("#header-badge");
+const backendHint = $("#backend-hint");
+const ollamaModelInput = $("#ollama-model");
+const ollamaUrlInput = $("#ollama-url");
+const idleUnloadSelect = $("#idle-unload");
+const responseCountInputs = $$('input[name="response-count"]');
+const ollamaSettings = $("#ollama-settings");
+const ollamaSettingsLabel = $("#ollama-settings-label");
+const modelSwitcherRoot = $("#model-switcher");
+const btnModel = $("#btn-model");
+const modelPillLabel = $("#model-pill-label");
+const modelMenu = $("#model-menu");
+
+// Create span for model status in settings
+const modelStatusSpan = document.createElement("span");
+modelStatusSpan.className = "settings-status";
+document.querySelector('label[for="ollama-model"]')?.appendChild(modelStatusSpan);

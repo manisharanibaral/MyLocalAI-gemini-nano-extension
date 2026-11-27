@@ -6,25 +6,24 @@ import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import vm from "node:vm";
 import { EDITIONS, SHARED_FILES } from "../scripts/build.mjs";
+import { sidebarHtml, sidebarJs, sidebarPaths } from "./helpers/sources.mjs";
 
 const root = new URL("../", import.meta.url);
 const read = (path) => readFileSync(new URL(path, root), "utf8");
 const exists = (path) => existsSync(new URL(path, root));
 
-const backendJs = read("firebase-backend.js");
-const sidebarJs = read("sidebar.js");
-const sidebarHtml = read("sidebar.html");
+const backendJs = read("providers/firebase-backend.js");
 
 // ===== New files exist; the extension root stays free of package.json =====
-for (const file of ["firebase-backend.js", "firebase-settings.example.js", "vendor/firebase-ai.js",
-  "tools/firebase-bundle/package.json", "tools/firebase-bundle/entry.js", "HACKATHON_RULES.md"]) {
+for (const file of ["providers/firebase-backend.js", "firebase-settings.example.js", "vendor/firebase-ai.js",
+  "tools/firebase-bundle/package.json", "tools/firebase-bundle/entry.js", "docs/HACKATHON_RULES.md"]) {
   assert.ok(exists(file), `${file} should exist`);
 }
 assert.equal(exists("package.json"), false, "the extension root must not get a package.json (CLAUDE.md)");
 
 // ===== Runtime files ship =====
-for (const file of ["firebase-backend.js", "vendor/firebase-ai.js"]) {
-  assert.ok(SHARED_FILES.includes(file), `SHARED_FILES should include ${file}`);
+for (const folder of ["providers", "vendor"]) {
+  assert.ok(SHARED_FILES.includes(folder), `SHARED_FILES should include ${folder}/`);
 }
 assert.equal(SHARED_FILES.includes("firebase-settings.local.js"), false, "the local (secret) config must not be a shared file");
 
@@ -43,7 +42,7 @@ assert.ok(Number(edition.manifest.minimum_chrome_version) >= 139, "hybrid on-dev
 // ===== Build output =====
 execFileSync(process.execPath, ["scripts/build.mjs", "firebase-hybrid"], { cwd: root, stdio: "ignore" });
 const dist = "dist/mylocalai-firebase-hybrid/";
-for (const file of ["firebase-backend.js", "vendor/firebase-ai.js", "sidebar.html", "sidebar.js", "config.js", "manifest.json"]) {
+for (const file of ["providers/firebase-backend.js", "vendor/firebase-ai.js", "sidebar.html", ...sidebarPaths, "config.js", "manifest.json"]) {
   assert.ok(exists(`${dist}${file}`), `dist should ship ${file}`);
 }
 {
@@ -109,17 +108,17 @@ assert.match(sidebarHtml, /Cloud options send your messages/, "the settings expl
 assert.match(sidebarHtml, /id="firebase-cloud-optin" class="status-optin hidden"[\s\S]*Sends your messages to Google/,
   "the overlay opt-in explains what it sends");
 
-// ===== sidebar.js only has the generic provider hook =====
+// ===== sidebar/ only has the generic provider hook =====
 for (const forbidden of ["MyLocalAIFirebase", "getGenerativeModel", "firebase/", '=== "firebase"', "edition ==="]) {
-  assert.equal(sidebarJs.includes(forbidden), false, `sidebar.js must not contain ${forbidden}`);
+  assert.equal(sidebarJs.includes(forbidden), false, `sidebar/ must not contain ${forbidden}`);
 }
 assert.match(sidebarJs, /function streamProvider\(/, "the provider hook sits next to the other stream functions");
 assert.ok(sidebarJs.indexOf("function streamOllama(") < sidebarJs.indexOf("function streamProvider("), "hook placement");
 {
   const configTag = sidebarHtml.indexOf('src="config.js"');
-  const backendTag = sidebarHtml.indexOf('src="firebase-backend.js"');
-  const sidebarTag = sidebarHtml.indexOf('src="sidebar.js"');
-  assert.ok(configTag < backendTag && backendTag < sidebarTag, "firebase-backend.js loads after config.js, before sidebar.js");
+  const backendTag = sidebarHtml.indexOf('src="providers/firebase-backend.js"');
+  const sidebarTag = sidebarHtml.indexOf('src="sidebar/');
+  assert.ok(configTag < backendTag && backendTag < sidebarTag, "firebase-backend.js loads after config.js, before the sidebar scripts");
   assert.equal(sidebarHtml.includes('src="vendor/firebase-ai.js"'), false, "the SDK is loaded lazily, never in other editions");
 }
 

@@ -8,7 +8,14 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="sidebar.css" />
+  <link rel="stylesheet" href="styles/base.css" />
+  <link rel="stylesheet" href="styles/settings.css" />
+  <link rel="stylesheet" href="styles/history-welcome.css" />
+  <link rel="stylesheet" href="styles/messages.css" />
+  <link rel="stylesheet" href="styles/markdown.css" />
+  <link rel="stylesheet" href="styles/input-bar.css" />
+  <link rel="stylesheet" href="styles/model-switcher.css" />
+  <link rel="stylesheet" href="styles/utility.css" />
 </head>
 
 <body>
@@ -151,7 +158,7 @@
           </div>
           <div class="settings-group">
             <span class="settings-label" id="response-count-label">Responses at once</span>
-            <!-- Radio inputs styled as a segmented control; sidebar.js reads the checked value. -->
+            <!-- Radio inputs styled as a segmented control; sidebar/core/settings.js reads the checked value. -->
             <div class="segmented" role="radiogroup" aria-labelledby="response-count-label">
               <label><input type="radio" name="response-count" value="1" checked /><span>1</span></label>
               <label><input type="radio" name="response-count" value="2" /><span>2</span></label>
@@ -202,7 +209,7 @@
           <h2 id="ollama-settings-label" class="settings-card-title">Ollama · fallback for non-Chrome browsers</h2>
           <div class="settings-group">
             <label class="settings-label" for="ollama-model">Model</label>
-            <!-- value/placeholder are filled from DEFAULT_OLLAMA_* in sidebar.js -->
+            <!-- value/placeholder are filled from DEFAULT_OLLAMA_* in sidebar/core/config.js -->
             <input id="ollama-model" type="text" class="settings-input" />
           </div>
           <div class="settings-group">
@@ -333,7 +340,7 @@
 
       <!-- IMAGE PREVIEW CARD -->
       <div id="image-preview-card" class="context-card hidden">
-        <!-- One thumbnail per attached image; sidebar.js fills it. -->
+        <!-- One thumbnail per attached image; sidebar/attachments/images.js fills it. -->
         <div id="image-preview-thumbs" class="img-thumbs"></div>
         <span class="context-text img-preview-text">Attached image</span>
         <button id="btn-clear-image" class="btn-clear-context" title="Clear image" aria-label="Clear image">
@@ -389,7 +396,7 @@
         <input type="file" id="file-upload" accept="image/*" hidden />
         <textarea id="user-input" class="user-input" rows="1" placeholder="Ask anything…" autocomplete="off"></textarea>
         <!-- MODEL SWITCHER: pill beside the send button showing the answering model; model-switcher.js builds the menu.
-             Hidden by sidebar.js in editions with only one model to pick. -->
+             Hidden by sidebar/ui/switch-model.js in editions with only one model to pick. -->
         <div id="model-switcher" class="model-switcher hidden">
           <button id="btn-model" class="model-pill" type="button" title="Switch model" aria-haspopup="menu"
             aria-expanded="false" aria-controls="model-menu">
@@ -419,14 +426,38 @@
     </div>
   </div>
 
-  <script src="purify.min.js"></script>
-  <script src="marked.umd.js"></script>
+  <script src="vendor/purify.min.js"></script>
+  <script src="vendor/marked.umd.js"></script>
   <script src="config.js"></script>
   <!-- Registers optional providers; loads the Firebase SDK only when config.js enables "firebase". -->
-  <script src="firebase-backend.js"></script>
-  <script src="model-switcher.js"></script>
-  <script src="full-page-capture.js"></script>
-  <script src="sidebar.js"></script>
+  <script src="providers/firebase-backend.js"></script>
+  <script src="features/model-switcher.js"></script>
+  <script src="features/full-page-capture.js"></script>
+  <!-- One shared global scope, so order matters: core first, main.js (which starts the panel) last. -->
+  <script src="sidebar/core/dom-refs.js"></script>
+  <script src="sidebar/core/config.js"></script>
+  <script src="sidebar/core/state.js"></script>
+  <script src="sidebar/core/browser.js"></script>
+  <script src="sidebar/core/settings.js"></script>
+  <script src="sidebar/chat/session-storage.js"></script>
+  <script src="sidebar/chat/history.js"></script>
+  <script src="sidebar/backends/nano.js"></script>
+  <script src="sidebar/backends/ollama.js"></script>
+  <script src="sidebar/backends/provider-hook.js"></script>
+  <script src="sidebar/backends/lifecycle.js"></script>
+  <script src="sidebar/chat/send-message.js"></script>
+  <script src="sidebar/ui/backend-ui.js"></script>
+  <script src="sidebar/ui/switch-model.js"></script>
+  <script src="sidebar/ui/messages.js"></script>
+  <script src="sidebar/ui/response-actions.js"></script>
+  <script src="sidebar/ui/rendering.js"></script>
+  <script src="sidebar/ui/status.js"></script>
+  <script src="sidebar/ui/prompt-bar.js"></script>
+  <script src="sidebar/attachments/images.js"></script>
+  <script src="sidebar/attachments/tab-screenshots.js"></script>
+  <script src="sidebar/attachments/screenshot-actions.js"></script>
+  <script src="sidebar/events.js"></script>
+  <script src="sidebar/main.js"></script>
 </body>
 
 </html>

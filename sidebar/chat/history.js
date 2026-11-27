@@ -1,0 +1,131 @@
+// Opening, listing, deleting and starting chats.
+"use strict";
+
+function loadConversation(id) {
+  const sessionToLoad = chatSessions.find(s => s.id === id);
+  if (!sessionToLoad) return;
+
+  currentSessionId = sessionToLoad.id;
+  chatHistory = [...sessionToLoad.history];
+
+  // Update UI
+  messagesEl.innerHTML = "";
+  welcomeScreen.classList.add("hidden");
+  messagesEl.classList.remove("hidden");
+
+  chatHistory.forEach(msg => {
+    if (msg.role === "user" || msg.role === "assistant") {
+      const role = msg.role === "assistant" ? "ai" : "user";
+      let displayContent = msg.content;
+      if (msg.role === "user" && displayContent.includes("User Question:\n")) {
+        displayContent = displayContent.split("User Question:\n")[1];
+      }
+      if (msg.role === "assistant" && msg.variants?.length > 1) {
+        appendSavedResponseGroup(msg);
+        return;
+      }
+      appendMessage(role, displayContent, false, msg.reasoning);
+    }
+  });
+
+  scrollToBottom(true);
+  updateTokenInfo();
+  historyPanel.classList.add("hidden");
+
+  // Give the loaded conversation a fresh Nano context (the old chat's turns must not leak in)
+  if (activeBackend === "nano" && session) {
+    resetNanoChat().then(hideStatus).catch((err) => {
+      console.warn("[MyLocalAI] Could not reset Nano chat:", err.message);
+    });
+  }
+}
+
+function renderHistoryList() {
+  historyList.innerHTML = "";
+  if (chatSessions.length === 0) {
+    historyList.innerHTML = `<div class="history-empty">No past chats found.</div>`;
+    return;
+  }
+
+  chatSessions.forEach(s => {
+    const el = document.createElement("div");
+    el.className = `history-item ${s.id === currentSessionId ? "active" : ""}`;
+
+    const dateStr = new Date(s.timestamp).toLocaleDateString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+
+    const contentDiv = document.createElement("div");
+    contentDiv.className = "history-item-content";
+    
+    const titleDiv = document.createElement("div");
+    titleDiv.className = "history-item-title";
+    // Recompute from history so chats saved before titles were cleaned don't show image data.
+    const title = s.history?.length ? extractTitle(s.history) : s.title;
+    titleDiv.title = title;
+    titleDiv.textContent = title;
+    
+    const dateDiv = document.createElement("div");
+    dateDiv.className = "history-item-date";
+    dateDiv.textContent = dateStr;
+    
+    contentDiv.appendChild(titleDiv);
+    contentDiv.appendChild(dateDiv);
+    
+    const delBtn = document.createElement("button");
+    delBtn.className = "btn-delete-chat";
+    delBtn.dataset.id = s.id;
+    delBtn.title = "Delete chat";
+    
+    const doc = new DOMParser().parseFromString(`
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+      </svg>
+    `, "image/svg+xml");
+    delBtn.appendChild(doc.documentElement);
+    
+    el.appendChild(contentDiv);
+    el.appendChild(delBtn);
+
+    el.querySelector('.history-item-content').addEventListener("click", () => {
+      if (isGenerating) return;
+      loadConversation(s.id);
+    });
+
+    el.querySelector('.btn-delete-chat').addEventListener("click", (e) => {
+      e.stopPropagation();
+      if (isGenerating) return;
+      deleteConversation(s.id);
+    });
+
+    historyList.appendChild(el);
+  });
+}
+
+function deleteConversation(id) {
+  chatSessions = chatSessions.filter(s => s.id !== id);
+  saveAllSessions();
+  renderHistoryList();
+
+  if (id === currentSessionId) {
+    startNewChat();
+  }
+}
+
+async function startNewChat() {
+  if (isGenerating) stopGeneration();
+  chatHistory = [];
+  currentSessionId = Date.now().toString();
+  clearContext();
+  clearAttachedImage();
+  messagesEl.innerHTML = "";
+  messagesEl.classList.add("hidden");
+  welcomeScreen.classList.remove("hidden");
+
+  try {
+    if (activeBackend === "nano") {
+      await resetNanoChat();
+      hideStatus();
+    }
+  } catch (_) { }
+  updateTokenInfo();
+  refreshAutoScreenshot("open"); // a new chat starts with the page you're on
+}

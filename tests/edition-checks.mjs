@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import vm from "node:vm";
+import { scriptPaths, sidebarJs, stylePaths } from "./helpers/sources.mjs";
 
 const root = new URL("../", import.meta.url);
 const read = (path) => readFileSync(new URL(path, root), "utf8");
@@ -30,7 +31,7 @@ for (const [edition, { backends, hosts }] of Object.entries(expected)) {
   assert.deepEqual(loadConfig(`${dir}config.js`).backends, backends, `${edition} config backends`);
   assert.equal(Boolean(manifest.host_permissions?.length), hosts, `${edition} host_permissions`);
   assert.equal(manifest.side_panel.default_path, "sidebar.html");
-  for (const file of ["sidebar.html", "sidebar.js", "sidebar.css", "model-switcher.js", "full-page-capture.js", "background.js", "purify.min.js", "marked.umd.js", "icons/icon128.png"]) {
+  for (const file of ["sidebar.html", ...scriptPaths.filter((path) => path !== "config.js"), ...stylePaths, "background.js", "page-watch.js", "icons/icon128.png"]) {
     assert.ok(existsSync(new URL(`${dir}${file}`, root)), `${edition} should ship ${file}`);
   }
   names.add(manifest.name);
@@ -40,9 +41,8 @@ assert.equal(names.size, Object.keys(expected).length, "each edition needs a dis
 // The root folder must stay loadable as the mixed edition.
 assert.deepEqual(loadConfig("config.js").backends, ["nano", "ollama"], "root config.js is the mixed edition");
 const html = read("sidebar.html");
-assert.ok(html.indexOf('src="config.js"') < html.indexOf('src="sidebar.js"'), "config.js must load before sidebar.js");
+assert.ok(html.indexOf('src="config.js"') < html.indexOf('src="sidebar/'), "config.js must load before the sidebar scripts");
 
-const sidebarJs = read("sidebar.js");
 assert.match(sidebarJs, /if\s*\(\s*nanoEnabled\s*\)\s*\{\s*try\s*\{\s*await initNanoSession\(\)/, "Nano init gated by config");
 assert.match(sidebarJs, /if\s*\(\s*ollamaEnabled\s*\)\s*\{\s*try\s*\{\s*await initOllamaSession\(\)/, "Ollama init gated by config");
 

@@ -1,7 +1,7 @@
 /**
  * MyLocalAI — Firebase AI Logic hybrid backend.
  *
- * Registers the "firebase" provider in window.MYLOCALAI_PROVIDERS. sidebar.js only talks to it
+ * Registers the "firebase" provider in window.MYLOCALAI_PROVIDERS. The sidebar only talks to it
  * through that interface (init / stream / describe…), so the Nano and Ollama code is untouched.
  *
  * Hybrid inference (Firebase AI Logic Web SDK, bundled in vendor/firebase-ai.js):
@@ -293,7 +293,7 @@
 
   function buildRequest(prompt, images = []) {
     if (images.length === 0) return prompt;
-    // Images are re-encoded as JPEG by sidebar.js, one of the two types on-device accepts.
+    // Images are re-encoded as JPEG by the sidebar, one of the two types on-device accepts.
     return [prompt, ...images.map((data) => ({ inlineData: { data, mimeType: "image/jpeg" } }))];
   }
 
@@ -352,7 +352,7 @@
     return { options, currentId: currentModelId() };
   }
 
-  // Stores the choice only; sidebar.js then calls init() to rebuild the model with it.
+  // Stores the choice only; the sidebar then calls init() to rebuild the model with it.
   function selectModel(id) {
     if (id === DEVICE_MODEL_ID) {
       storeSetting(STORAGE_KEYS.route, "device");
