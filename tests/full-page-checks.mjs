@@ -149,14 +149,16 @@ async function assertFailsAndRestores({ onCapture, signal, expected, message }) 
   let body;
   const sandbox = loadFunctions(["ollamaPromptStreaming"], {
     getOllamaUrl: () => "http://x", getOllamaModel: () => "m", sysPromptEl: { value: "sys" }, DEFAULT_SYSTEM_PROMPT: "",
-    chatHistory: [{ role: "user", content: "old__IMG__A" }, { role: "assistant", content: "a" }, { role: "user", content: "page__IMG__B__IMG__C" }],
+    chatHistory: [{ role: "user", content: "old", images: ["A"] }, { role: "assistant", content: "a" },
+      { role: "user", content: "has __IMG__ typed" }, { role: "user", content: "page", images: ["B", "C"] }],
     MAX_CHAT_MESSAGES: 100, tempSlider: { value: "1" }, topkSlider: { value: "3" }, modelSupportsThinking: false,
     GENERATION_TIMEOUT_MS: 1,
     fetchWithTimeout: async (url, options) => { body = JSON.parse(options.body); return { ok: true, body: { getReader() { } } }; },
   });
   await sandbox.ollamaPromptStreaming("page", null);
   assert.deepEqual(body.messages.slice(1).map((m) => [m.content, m.images]),
-    [["old", ["A"]], ["a", undefined], ["page", ["B", "C"]]]);
+    [["old", ["A"]], ["a", undefined], ["has __IMG__ typed", undefined], ["page", ["B", "C"]]],
+    "typed text that looks like the old image marker stays text");
 }
 {
   // Firebase: one inlineData part per image.
@@ -170,21 +172,21 @@ async function assertFailsAndRestores({ onCapture, signal, expected, message }) 
 {
   // Storage full: images go before any chat is deleted, and the open chat keeps its own copy.
   let stored = "";
-  const openMessage = { role: "user", content: `q__IMG__${"x".repeat(500)}` };
+  const openMessage = { role: "user", content: "q", images: ["x".repeat(500)] };
   const sandbox = loadFunctions(["saveAllSessions", "tryWriteSessions", "freeSessionStorage", "withoutImages"], {
     chatSessions: [
       { id: "new", history: [openMessage] },
-      { id: "old", history: [{ role: "user", content: `p__IMG__${"y".repeat(500)}` }, { role: "assistant", content: "keep" }] },
+      { id: "old", history: [{ role: "user", content: "p", images: ["y".repeat(500)] }, { role: "assistant", content: "keep" }] },
     ],
     localStorage: { setItem(_key, value) { if (value.length > 800) throw new Error("QuotaExceededError"); stored = value; } },
   });
   sandbox.saveAllSessions();
   const saved = JSON.parse(stored);
   assert.deepEqual(saved.map((s) => s.id), ["new", "old"], "no chat is deleted while dropping images is enough");
-  assert.equal(saved[1].history[0].content, "p", "the oldest chat loses its images first");
+  assert.deepEqual([saved[1].history[0].content, saved[1].history[0].images], ["p", undefined], "the oldest chat loses its images first");
   assert.equal(saved[1].history[1].content, "keep");
-  assert.match(saved[0].history[0].content, /__IMG__/, "newer images stay when they fit");
-  assert.match(openMessage.content, /__IMG__/, "the open chat's message objects are not modified");
+  assert.equal(saved[0].history[0].images.length, 1, "newer images stay when they fit");
+  assert.equal(openMessage.images.length, 1, "the open chat's message objects are not modified");
 
   sandbox.localStorage.setItem = (_key, value) => { if (value.length > 60) throw new Error("full"); stored = value; };
   sandbox.saveAllSessions();

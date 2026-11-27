@@ -24,7 +24,7 @@ function loadConversation(id) {
         appendSavedResponseGroup(msg);
         return;
       }
-      appendMessage(role, displayContent, false, msg.reasoning);
+      appendMessage(role, displayContent, false, msg.reasoning, msg.images);
     }
   });
 

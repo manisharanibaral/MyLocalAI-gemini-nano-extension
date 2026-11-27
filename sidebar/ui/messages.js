@@ -2,7 +2,8 @@
 "use strict";
 
 // ===================== DOM HELPERS =====================
-function appendMessage(role, text, streaming = false, reasoning = "") {
+// images: base64 JPEGs sent with a user message, shown under its text.
+function appendMessage(role, text, streaming = false, reasoning = "", images = []) {
   const msg = document.createElement("div");
   msg.className = `msg ${role}`;
 
@@ -16,9 +17,8 @@ function appendMessage(role, text, streaming = false, reasoning = "") {
   if (streaming) {
     bubble.innerHTML = `<span class="typing-indicator"><span class="dot"></span><span class="dot"></span><span class="dot"></span></span>`;
   } else {
-    if (role === "user" && text.includes("__IMG__")) {
-      const [typedText, ...images] = text.split("__IMG__");
-      bubble.textContent = typedText;
+    if (role === "user" && images.length) {
+      bubble.textContent = text;
       bubble.appendChild(createMessageImages(images));
     } else {
       let html = "";

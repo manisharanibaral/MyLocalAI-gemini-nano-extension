@@ -43,7 +43,7 @@ function updateBackendUI() {
     setAttachAvailable(modelSupportsVision);
   } else if (activeBackend === "ollama") {
     const model = getOllamaModel();
-    const statusText = isOllamaModelValid ? "" : " ⚠️ (Not a locall model)";
+    const statusText = isOllamaModelValid ? "" : " ⚠️ (not found in Ollama)";
     headerBadge.textContent = `Ollama · ${model}${statusText}`;
     headerBadge.style.color = isOllamaModelValid ? "" : "#F87171";
 

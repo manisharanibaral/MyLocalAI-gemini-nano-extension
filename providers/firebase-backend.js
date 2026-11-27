@@ -260,12 +260,12 @@
   }
 
   // ===================== MULTI-TURN → SINGLE PROMPT =====================
-  // chatHistory entries are { role: "user"|"assistant", content }, user images stored as
-  // "<text>__IMG__<base64>__IMG__<base64>…". The last entry is the message being answered.
+  // chatHistory entries are { role: "user"|"assistant", content, images? }. Images are sent
+  // separately (buildRequest), never as text. The last entry is the message being answered.
   function buildConversationPrompt(history) {
     const turns = history
       .filter((m) => m.role === "user" || m.role === "assistant")
-      .map((m) => ({ role: m.role, text: String(m.content).split("__IMG__")[0].trim() }));
+      .map((m) => ({ role: m.role, text: String(m.content ?? "").trim() }));
     const current = turns.pop();
     if (!current) return "";
     const earlier = recentTurnsWithinBudget(turns);

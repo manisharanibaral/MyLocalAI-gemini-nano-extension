@@ -52,7 +52,8 @@ function ndjsonStream(frames, { waitForStop } = {}) {
 }
 
 // options.answer: the content frames /api/chat streams. waitForStop: keep the body open.
-export function fakeOllama({ answer = ["Hello ", "there"], waitForStop = false, models = ["gemma4:e4b"] } = {}) {
+// models: what /api/tags lists. knowsModel: false makes /api/show fail, as for an unknown model.
+export function fakeOllama({ answer = ["Hello ", "there"], waitForStop = false, models = ["gemma4:e4b"], knowsModel = true } = {}) {
   const ollama = { chatBodies: [], fetch: null };
   ollama.fetch = async (url, options = {}) => {
     if (url.endsWith("/api/chat")) {
@@ -60,7 +61,7 @@ export function fakeOllama({ answer = ["Hello ", "there"], waitForStop = false, 
       const frames = answer.map((content) => ({ message: { content } }));
       return { ok: true, body: ndjsonStream(frames, { waitForStop }) };
     }
-    if (url.endsWith("/api/show")) return { ok: true, json: async () => ({ capabilities: [] }) };
+    if (url.endsWith("/api/show")) return { ok: knowsModel, json: async () => ({ capabilities: [] }) };
     return { ok: true, json: async () => ({ models: models.map((name) => ({ name })) }) };
   };
   return ollama;

@@ -1,7 +1,7 @@
 // Attach menu, tab screenshots, page watcher, history titles and the context card.
 // Part of tests/regression-checks.mjs: static checks over the source files, no browser.
 import assert from "node:assert/strict";
-import { functionBody, read, sidebarCss, sidebarHtml, sidebarJs } from "../helpers/sources.mjs";
+import { functionBody, functionSource, read, sidebarCss, sidebarHtml, sidebarJs } from "../helpers/sources.mjs";
 
 const manifestJson = JSON.parse(read("manifest.json"));
 const setupEventListeners = functionBody(sidebarJs, "setupEventListeners");
@@ -114,11 +114,18 @@ assert.match(functionBody(sidebarJs, "saveSettings"), /tabScreenshotMode/, "the 
   for (const url of skip) assert.equal(isWorth(url), false, `auto mode should skip ${url}`);
 }
 {
-  // History titles must never show the base64 of an attached image.
-  const extractTitle = new Function("history", functionBody(sidebarJs, "extractTitle"));
-  assert.equal(extractTitle([{ role: "user", content: "summarise__IMG__/9j/4AAQSkZJRgABAQ" }]), "summarise");
+  // History titles must never show the base64 of an attached image, including in chats saved
+  // in the old "<text>__IMG__<base64>" form (converted when read).
+  const titleOf = new Function("history", `
+    ${functionSource(sidebarJs, "messageText")}
+    ${functionSource(sidebarJs, "upgradeLegacyImageMessage")}
+    const LEGACY_IMAGE_MARKER = "__IMG__";
+    function extractTitle(history) {${functionBody(sidebarJs, "extractTitle")}}
+    return extractTitle(history.map(upgradeLegacyImageMessage));`);
+  assert.equal(titleOf([{ role: "user", content: "summarise", images: ["/9j/4AAQSkZJRgABAQ"] }]), "summarise");
+  assert.equal(titleOf([{ role: "user", content: "summarise__IMG__/9j/4AAQSkZJRgABAQ" }]), "summarise");
   assert.equal(
-    extractTitle([{ role: "user", content: 'Context:\n"""\nx\n"""\n\nUser Question:\nwhat is this__IMG__/9j/4AAQ' }]),
+    titleOf([{ role: "user", content: 'Context:\n"""\nx\n"""\n\nUser Question:\nwhat is this__IMG__/9j/4AAQ' }]),
     "what is this"
   );
   assert.match(functionBody(sidebarJs, "renderHistoryList"), /extractTitle\(s\.history\)/, "old saved titles should be recomputed");

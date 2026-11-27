@@ -86,15 +86,12 @@ async function initOllamaSession() {
     console.info(`[MyLocalAI] /api/show unavailable for "${model}". Using name heuristics. Vision: ${modelSupportsVision}, Thinking: ${modelSupportsThinking}`);
   }
 
-  // Determine validity:
-  // - /api/show succeeded → definitely valid
-  // - Cloud model → assume valid (Ollama will auto-pull on first prompt)
-  // - In local tags → valid
-  // - Otherwise → might still work (Ollama can pull on demand), treat as valid but warn
+  // Known to Ollama when /api/show answered, it is in the local tags, or it is a cloud model
+  // (Ollama pulls those on the first prompt). Otherwise sending is still allowed, but the
+  // header warns, because the first reply will fail unless Ollama can pull the model.
   isOllamaModelValid = showSucceeded || isCloudModel || modelExistsLocally;
   if (!isOllamaModelValid) {
     console.warn(`[MyLocalAI] Model "${model}" not found locally or in cloud. It may be pulled on first use.`);
-    isOllamaModelValid = true; // Don't block — Ollama will attempt to pull
   }
 
   console.log(`[MyLocalAI] Ollama ready at ${baseUrl} with model ${model}. Vision: ${modelSupportsVision}, Thinking: ${modelSupportsThinking}`);
@@ -111,10 +108,9 @@ async function ollamaPromptStreaming(text, signal) {
   const messages = [
     { role: "system", content: systemPrompt },
     ...chatHistory.slice(-MAX_CHAT_MESSAGES).map(m => {
-      // History stores "<text>__IMG__<base64>__IMG__<base64>…"; Ollama takes the images as an array.
-      if (m.role === "user" && m.content.includes("__IMG__")) {
-        const [content, ...images] = m.content.split("__IMG__");
-        return { role: m.role, content, images };
+      // Ollama takes a message's images as an array of base64 strings, like history keeps them.
+      if (m.role === "user") {
+        return m.images?.length ? { role: m.role, content: m.content, images: m.images } : { role: m.role, content: m.content };
       }
       // Only the selected answer (already in `content`) belongs in the prompt;
       // the unused alternatives would just waste the model's context.
@@ -182,102 +178,94 @@ async function fetchWithTimeout(url, options = {}, timeoutMs = REQUEST_TIMEOUT_M
 
 // ── Ollama streaming ──
 async function streamOllama(text, aiBubble) {
-  const body = await ollamaPromptStreaming(text, abortController.signal);
+  const signal = abortController.signal;
+  const body = await ollamaPromptStreaming(text, signal);
   const reader = body.getReader();
+  // fetchWithTimeout() stops watching the signal once the reply has started, so Stop must
+  // end the read of the body here; cancel() makes the pending read() return at once.
+  const stopReading = () => reader.cancel().catch(() => { });
+  signal.addEventListener("abort", stopReading, { once: true });
+  if (signal.aborted) stopReading();
+  try {
+    return await readOllamaStream(reader, aiBubble, signal);
+  } finally {
+    signal.removeEventListener("abort", stopReading);
+  }
+}
+
+// Reads Ollama's NDJSON frames, rendering as they arrive. Throws an AbortError on Stop, so
+// the answer is kept as stopped (see showResponseError) instead of as finished.
+async function readOllamaStream(reader, aiBubble, signal) {
   const decoder = new TextDecoder();
-
-  let fullText = "";
-  let reasoningText = "";
-  let inThinkingTag = false;
+  const answer = { text: "", reasoning: "", inThinkingTag: false };
   let buffer = "";
-
-  const consumeLine = (line) => {
-    if (!line.trim()) return;
-    const json = JSON.parse(line);
-    if (json.error) {
-      throw new Error(`Ollama error: ${String(json.error).slice(0, 500)}`);
-    }
-
-    // Ollama uses `message.thinking`; older versions may use `reasoning`.
-    reasoningText += json.message?.thinking || json.message?.reasoning || "";
-
-    if (json.message?.content) {
-      let contentChunk = json.message.content;
-
-      // Handle models that embed reasoning in <think> tags.
-      if (contentChunk.includes("<think>")) {
-        inThinkingTag = true;
-        const parts = contentChunk.split("<think>");
-        if (parts[0]) fullText += parts[0];
-        contentChunk = parts[1] || "";
-      }
-
-      if (inThinkingTag) {
-        if (contentChunk.includes("</think>")) {
-          inThinkingTag = false;
-          const parts = contentChunk.split("</think>");
-          reasoningText += parts[0];
-          fullText += parts[1] || "";
-        } else {
-          reasoningText += contentChunk;
-        }
-      } else {
-        fullText += contentChunk;
-      }
-    }
-
-    renderStreamingText(aiBubble, fullText, reasoningText);
-    scrollToBottom();
-  };
 
   while (true) {
     const { done, value } = await reader.read();
+    if (signal.aborted) throw stoppedByUser();
     if (done) break;
 
     buffer += decoder.decode(value, { stream: true });
     const lines = buffer.split("\n");
     buffer = lines.pop(); // keep incomplete line in buffer
-
-    for (const line of lines) {
-      try {
-        consumeLine(line);
-      } catch (error) {
-        if (error instanceof SyntaxError) {
-          throw new Error("Ollama protocol error: malformed NDJSON frame");
-        }
-        throw error;
-      }
-    }
+    lines.forEach(line => consumeOllamaLine(line, answer, aiBubble));
   }
 
-  // Flush decoder so split UTF-8 characters are completed before parsing.
+  // Flush decoder so split UTF-8 characters are completed before parsing. Some proxies
+  // send the final NDJSON object without a trailing newline, so the rest is a line too.
   buffer += decoder.decode();
-  const finalLines = buffer.split("\n");
-  buffer = finalLines.pop() || "";
+  buffer.split("\n").forEach(line => consumeOllamaLine(line, answer, aiBubble));
 
-  for (const line of finalLines) {
-    try {
-      consumeLine(line);
-    } catch (error) {
-      if (error instanceof SyntaxError) {
-        throw new Error("Ollama protocol error: malformed NDJSON frame");
+  finalizeMessage(aiBubble, answer.text, answer.reasoning);
+  return { content: answer.text, reasoning: answer.reasoning };
+}
+
+function stoppedByUser() {
+  const err = new Error("Generation stopped");
+  err.name = "AbortError";
+  return err;
+}
+
+// Adds one NDJSON frame to the answer. Reasoning arrives in `message.thinking` (older
+// versions: `reasoning`), or inside <think> tags in the content for some models.
+function consumeOllamaLine(line, answer, aiBubble) {
+  if (!line.trim()) return;
+  let json;
+  try {
+    json = JSON.parse(line);
+  } catch (_) {
+    throw new Error("Ollama protocol error: malformed NDJSON frame");
+  }
+  if (json.error) {
+    throw new Error(`Ollama error: ${String(json.error).slice(0, 500)}`);
+  }
+
+  answer.reasoning += json.message?.thinking || json.message?.reasoning || "";
+
+  if (json.message?.content) {
+    let contentChunk = json.message.content;
+
+    if (contentChunk.includes("<think>")) {
+      answer.inThinkingTag = true;
+      const parts = contentChunk.split("<think>");
+      if (parts[0]) answer.text += parts[0];
+      contentChunk = parts[1] || "";
+    }
+
+    if (answer.inThinkingTag) {
+      if (contentChunk.includes("</think>")) {
+        answer.inThinkingTag = false;
+        const parts = contentChunk.split("</think>");
+        answer.reasoning += parts[0];
+        answer.text += parts[1] || "";
+      } else {
+        answer.reasoning += contentChunk;
       }
-      throw error;
+    } else {
+      answer.text += contentChunk;
     }
   }
 
-  // Some proxies return final NDJSON object without a trailing newline.
-  if (buffer.trim()) {
-    try {
-      consumeLine(buffer);
-    } catch (error) {
-      if (error instanceof SyntaxError) {
-        throw new Error("Ollama protocol error: malformed NDJSON frame");
-      }
-      throw error;
-    }
-  }
-
-  finalizeMessage(aiBubble, fullText, reasoningText);
-  return { content: fullText, reasoning: reasoningText };
+  renderStreamingText(aiBubble, answer.text, answer.reasoning);
+  scrollToBottom();
 }

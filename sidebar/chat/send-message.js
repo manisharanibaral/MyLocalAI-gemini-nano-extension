@@ -57,10 +57,10 @@ async function sendMessageNow(text) {
 
   // UI display keeps the user's typed text; history keeps the exact prompt
   // sent to the backend so selected context is preserved for Ollama.
-  const displayMessage = [typedPrompt, ...imagesToSend].join("__IMG__");
-  const historyMessage = [finalPrompt, ...imagesToSend].join("__IMG__");
-  appendMessage("user", displayMessage);
-  chatHistory.push({ role: "user", content: historyMessage });
+  appendMessage("user", typedPrompt, false, "", imagesToSend);
+  chatHistory.push(imagesToSend.length
+    ? { role: "user", content: finalPrompt, images: imagesToSend }
+    : { role: "user", content: finalPrompt });
   // The reply belongs to this chat even if the user starts or opens another one meanwhile.
   const chat = { id: currentSessionId, history: chatHistory };
 

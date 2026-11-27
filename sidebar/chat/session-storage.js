@@ -17,7 +17,7 @@ function loadSessions() {
             // one and would overwrite the migrated history on its first save.
             id: `migrated-${Date.now()}`,
             title: extractTitle(oldHistory),
-            history: oldHistory,
+            history: oldHistory.map(upgradeLegacyImageMessage),
             timestamp: Date.now()
           }];
           localStorage.removeItem("chatHistory");
@@ -34,7 +34,8 @@ function loadSessions() {
 // so every change starts from this instead of from the copy loaded when this panel opened.
 function readStoredSessions() {
   try {
-    return JSON.parse(localStorage.getItem("chatSessions")) || [];
+    const stored = JSON.parse(localStorage.getItem("chatSessions")) || [];
+    return stored.map(s => ({ ...s, history: (s.history || []).map(upgradeLegacyImageMessage) }));
   } catch (e) {
     console.warn("[MyLocalAI] Could not read saved chats", e);
     return chatSessions; // unreadable storage must not wipe the list we have
@@ -99,9 +100,21 @@ function freeSessionStorage() {
 
 // A copy, because the open chat shares its message objects and still needs its images.
 function withoutImages(savedSession) {
-  const history = savedSession.history.map(m =>
-    m.role === "user" ? { ...m, content: m.content.split("__IMG__")[0] } : m);
+  const history = savedSession.history.map(({ images, ...message }) => message);
   return { ...savedSession, history };
+}
+
+// A user message is { role, content, images? }: the text, and its images as base64 JPEGs.
+// Chats saved before images had their own field kept them inside the text, as
+// "<text>__IMG__<base64>__IMG__<base64>…"; those are converted when read.
+const LEGACY_IMAGE_MARKER = "__IMG__";
+
+function upgradeLegacyImageMessage(message) {
+  const isLegacy = message.role === "user" && !message.images &&
+    String(message.content).includes(LEGACY_IMAGE_MARKER);
+  if (!isLegacy) return message;
+  const [content, ...images] = message.content.split(LEGACY_IMAGE_MARKER);
+  return { ...message, content, images };
 }
 
 // A reply can finish after the user started or opened another chat, so the caller passes the
@@ -132,16 +145,15 @@ function saveConversation(sessionId = currentSessionId, history = chatHistory) {
   }
 }
 
-// The text of a message without its images.
+// The text of a message; its images are kept apart, in message.images.
 function messageText(message) {
-  return String(message.content).split("__IMG__")[0];
+  return String(message.content ?? "");
 }
 
 function extractTitle(history) {
   const firstUserMsg = history.find(m => m.role === "user");
   if (!firstUserMsg) return "New Chat";
-  // Image messages are stored as "<text>__IMG__<base64>"; only the text belongs in a title.
-  let content = firstUserMsg.content.split("__IMG__")[0];
+  let content = messageText(firstUserMsg);
   if (content.includes("User Question:\n")) {
     content = content.split("User Question:\n")[1];
   }

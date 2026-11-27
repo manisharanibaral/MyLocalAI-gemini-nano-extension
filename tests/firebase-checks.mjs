@@ -139,7 +139,7 @@ assert.ok(sidebarJs.indexOf("function streamOllama(") < sidebarJs.indexOf("funct
   const twoTurns = build([
     { role: "user", content: "What is 2+2?" },
     { role: "assistant", content: "4" },
-    { role: "user", content: "And times 3?__IMG__aGVsbG8=" },
+    { role: "user", content: "And times 3?", images: ["aGVsbG8="] },
   ]);
   assert.match(twoTurns, /User: What is 2\+2\?\nAssistant: 4/, "earlier turns are folded into the prompt");
   assert.match(twoTurns, /latest message:\nAnd times 3\?$/, "the current message comes last");
