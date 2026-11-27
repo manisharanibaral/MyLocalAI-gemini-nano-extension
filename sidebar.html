@@ -333,9 +333,8 @@
 
       <!-- IMAGE PREVIEW CARD -->
       <div id="image-preview-card" class="context-card hidden">
-        <div class="img-thumb">
-          <img id="image-preview-img" src="" alt="Attached image preview" />
-        </div>
+        <!-- One thumbnail per attached image; sidebar.js fills it. -->
+        <div id="image-preview-thumbs" class="img-thumbs"></div>
         <span class="context-text img-preview-text">Attached image</span>
         <button id="btn-clear-image" class="btn-clear-context" title="Clear image" aria-label="Clear image">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
@@ -375,6 +374,15 @@
                 <line x1="12" y1="18" x2="12" y2="21"></line>
               </svg>
               Screenshot this tab
+            </button>
+            <button id="btn-screenshot-page" class="attach-menu-item" role="menuitem">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                stroke-linejoin="round">
+                <rect x="6" y="2" width="12" height="20" rx="2"></rect>
+                <line x1="6" y1="9" x2="18" y2="9"></line>
+                <line x1="6" y1="15" x2="18" y2="15"></line>
+              </svg>
+              Screenshot whole page
             </button>
           </div>
         </div>
@@ -417,6 +425,7 @@
   <!-- Registers optional providers; loads the Firebase SDK only when config.js enables "firebase". -->
   <script src="firebase-backend.js"></script>
   <script src="model-switcher.js"></script>
+  <script src="full-page-capture.js"></script>
   <script src="sidebar.js"></script>
 </body>
 

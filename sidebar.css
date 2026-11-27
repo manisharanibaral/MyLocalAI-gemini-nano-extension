@@ -826,6 +826,14 @@ select.settings-input { text-overflow: ellipsis; white-space: nowrap; }
   border: 1px solid var(--border-subtle);
 }
 
+/* A full-page screenshot sends several images; two columns keep the message short. */
+.msg-images-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+  align-items: start;
+}
+
 .msg-bubble blockquote {
   border-left: 3px solid var(--accent-from);
   background: hsla(260, 60%, 55%, 0.08);
@@ -1070,14 +1078,23 @@ hr {
   height: 16px;
 }
 
-.img-thumb {
+/* Thumbnails scroll sideways so many page parts never push the label or ✕ off the card. */
+.img-thumbs {
+  display: flex;
+  gap: 4px;
+  max-width: 55%;
+  overflow-x: auto;
+  flex-shrink: 0;
+}
+.img-thumbs:empty { display: none; }
+.img-thumbs img {
   width: 36px; height: 36px;
-  overflow: hidden;
+  object-fit: cover;
+  object-position: top;
   border-radius: 4px;
   border: 1px solid var(--border-subtle);
   flex-shrink: 0;
 }
-.img-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .img-preview-text { font-style: italic; color: var(--text-muted); }
 
 .input-wrap {
@@ -1129,6 +1146,7 @@ hr {
   font-family: var(--font);
   font-size: 13px;
   text-align: left;
+  white-space: nowrap;
   cursor: pointer;
 }
 .attach-menu-item svg { width: 16px; height: 16px; color: var(--text-secondary); flex-shrink: 0; }

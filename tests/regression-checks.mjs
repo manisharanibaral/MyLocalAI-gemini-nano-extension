@@ -287,7 +287,7 @@ assert.match(functionBody(sidebarJs, "loadSettings"), /responseCount[\s\S]*setRe
   const sendBody = functionBody(sidebarJs, "sendMessage");
   assert.match(sendBody, /Promise\.allSettled\(group\.bubbles\.map/, "answers should stream in parallel, one failure must not cancel the rest");
   assert.match(sendBody, /createNanoVariantSessions\(getResponseCount\(\)\)/, "Nano answers need one session each");
-  assert.match(sendBody, /streamNano\(finalPrompt, bubble, imageToSend, nanoSessions\[i\]\)/, "each Nano answer should use its own session");
+  assert.match(sendBody, /streamNano\(finalPrompt, bubble, imagesToSend, nanoSessions\[i\]\)/, "each Nano answer should use its own session");
   assert.match(sendBody, /recordResponses\(group, results\)/, "the reply should be stored once, after all answers settle");
 }
 assert.equal(/chatHistory\.push/.test(streamNano), false, "streamNano must not push history itself (recordResponses does)");
@@ -351,7 +351,7 @@ assert.match(functionBody(sidebarJs, "saveSettings"), /tabScreenshotMode/, "the 
     "open mode should follow tab switches until the first prompt is sent");
   assert.match(auto, /isWebsiteWorthCapturing\(tab\.url\)\) \{[\s\S]*trigger === "tab-change" && attachedImageIsAuto\) clearAttachedImage\(\)/,
     "switching to a search/browser page before the first prompt should drop the stale screenshot");
-  assert.match(auto, /currentAttachedImage && !attachedImageIsAuto\) return/, "an image the user chose must never be replaced");
+  assert.match(auto, /attachedImages\.length && !attachedImageIsAuto\) return/, "an image the user chose must never be replaced");
   assert.match(auto, /hasTabAccess\(\)\)\) \{\s*showScreenshotAccessCard\(\)/, "missing access should offer the Allow card");
   assert.match(auto, /mode === "open" && !isWebsiteWorthCapturing\(tab\.url\)/, "open mode skips search and browser pages");
   assert.match(auto, /trigger === "tab-change" && tab\.url === lastAutoScreenshotUrl/, "a reload of the same page should not re-add it");
@@ -403,7 +403,7 @@ assert.match(functionBody(sidebarJs, "saveSettings"), /tabScreenshotMode/, "the 
 
   const auto = functionBody(sidebarJs, "refreshAutoScreenshot");
   assert.match(auto, /trigger === "scroll" && !hasAutoScreenshotPending\(\)\) return/, "scroll only refreshes a screenshot still in the prompt bar");
-  assert.match(functionBody(sidebarJs, "hasAutoScreenshotPending"), /currentAttachedImage\) && attachedImageIsAuto/, "a user's own image is never 'pending auto'");
+  assert.match(functionBody(sidebarJs, "hasAutoScreenshotPending"), /attachedImages\.length > 0 && attachedImageIsAuto/, "a user's own image is never 'pending auto'");
   const onPage = functionBody(sidebarJs, "onPageMessage");
   assert.match(onPage, /if \(!isFromWatchedTab\(sender\)\) return;/, "only the active tab of this panel's window counts");
   assert.match(onPage, /PAGE_TEXT_SELECTED[\s\S]*onPageTextSelected\(message\.text\)/, "selections are handled");
@@ -456,7 +456,7 @@ assert.match(sidebarCss, /\.attach-menu\s*\{[^}]*bottom: calc\(100% \+ 8px\)/, "
   assert.match(sidebarCss, /#context-text,\s*\.img-preview-text\s*\{[^}]*white-space: normal[^}]*display: -webkit-box/, "previews wrap to the panel width");
   assert.match(sidebarCss, /#context-text \{ -webkit-line-clamp: 3;/, "the selection preview clamps at three lines");
   assert.match(sidebarCss, /\.img-preview-text \{ -webkit-line-clamp: 2;/, "the screenshot title clamps at two lines");
-  assert.match(functionBody(sidebarJs, "attachImageDataUrl"), /imagePreviewText\.title = label/, "the screenshot title shows in full on hover");
+  assert.match(functionBody(sidebarJs, "showImagePreview"), /imagePreviewText\.title = label/, "the screenshot title shows in full on hover");
 }
 
 // ===== Settings layout (grouped cards + pinned actions) =====

@@ -58,6 +58,7 @@
   const attachMenu = $("#attach-menu");
   const btnUploadImg = $("#btn-upload-img");
   const btnScreenshotTab = $("#btn-screenshot-tab");
+  const btnScreenshotPage = $("#btn-screenshot-page");
   const tabScreenshotSelect = $("#tab-screenshot-mode");
   const screenshotAccessCard = $("#screenshot-access-card");
   const btnAllowScreenshots = $("#btn-allow-screenshots");
@@ -65,7 +66,7 @@
   const imagePreviewText = $(".img-preview-text");
   const fileUpload = $("#file-upload");
   const imagePreviewCard = $("#image-preview-card");
-  const imagePreviewImg = $("#image-preview-img");
+  const imagePreviewThumbs = $("#image-preview-thumbs");
   const btnClearImage = $("#btn-clear-image");
   const inputBar = document.querySelector(".input-bar");
   const tokenInfo = $("#token-info");
@@ -110,7 +111,9 @@
   let currentSessionId = Date.now().toString();
   let activeBackend = null;    // "nano" | "ollama" | externalProvider.id | null
   let currentContextText = ""; // Context from selected text
-  let currentAttachedImage = null; // Base64 string of attached image
+  let attachedImages = [];     // Base64 JPEGs waiting to be sent (several for a full-page screenshot)
+  let attachedImagesNote = ""; // tells the model how the images relate; sent along with them
+  let pageCapture = null;      // AbortController while a full-page screenshot is being taken
   let modelSupportsVision = false;
   let modelSupportsThinking = false;
   let isOllamaModelValid = true;
@@ -335,16 +338,39 @@ Always prefer structured output over plain paragraphs.`;
     try {
       localStorage.setItem("chatSessions", JSON.stringify(chatSessions));
     } catch (e) {
-      // Quota errors should not break chat. Drop oldest sessions until storage fits.
-      while (chatSessions.length > 1) {
-        chatSessions.pop();
-        try {
-          localStorage.setItem("chatSessions", JSON.stringify(chatSessions));
-          return;
-        } catch (_) { /* continue trimming */ }
-      }
-      console.warn("[MyLocalAI] Could not save sessions", e);
+      // Quota errors should not break chat.
+      if (!freeSessionStorage()) console.warn("[MyLocalAI] Could not save sessions", e);
     }
+  }
+
+  function tryWriteSessions() {
+    try {
+      localStorage.setItem("chatSessions", JSON.stringify(chatSessions));
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  // Images are far larger than text, so they go first (oldest chat first): a few full-page
+  // screenshots must not wipe the chat history. Whole chats are dropped only after that.
+  function freeSessionStorage() {
+    for (let i = chatSessions.length - 1; i >= 0; i -= 1) {
+      chatSessions[i] = withoutImages(chatSessions[i]);
+      if (tryWriteSessions()) return true;
+    }
+    while (chatSessions.length > 1) {
+      chatSessions.pop();
+      if (tryWriteSessions()) return true;
+    }
+    return false;
+  }
+
+  // A copy, because the open chat shares its message objects and still needs its images.
+  function withoutImages(savedSession) {
+    const history = savedSession.history.map(m =>
+      m.role === "user" ? { ...m, content: m.content.split("__IMG__")[0] } : m);
+    return { ...savedSession, history };
   }
 
   function saveConversation() {
@@ -1041,7 +1067,7 @@ Always prefer structured output over plain paragraphs.`;
     console.log(`[MyLocalAI] Ollama ready at ${baseUrl} with model ${model}. Vision: ${modelSupportsVision}, Thinking: ${modelSupportsThinking}`);
   }
 
-  async function ollamaPromptStreaming(text, signal, attachedImage = null) {
+  async function ollamaPromptStreaming(text, signal) {
     const baseUrl = getOllamaUrl();
     const model = getOllamaModel();
     const systemPrompt = sysPromptEl.value.trim() || DEFAULT_SYSTEM_PROMPT;
@@ -1052,10 +1078,10 @@ Always prefer structured output over plain paragraphs.`;
     const messages = [
       { role: "system", content: systemPrompt },
       ...chatHistory.slice(-MAX_CHAT_MESSAGES).map(m => {
-        // Strip __IMG__ tag from history string payload, pass as array for Ollama
+        // History stores "<text>__IMG__<base64>__IMG__<base64>…"; Ollama takes the images as an array.
         if (m.role === "user" && m.content.includes("__IMG__")) {
-          const parts = m.content.split("__IMG__");
-          return { role: m.role, content: parts[0], images: parts[1] ? [parts[1]] : undefined };
+          const [content, ...images] = m.content.split("__IMG__");
+          return { role: m.role, content, images };
         }
         // Only the selected answer (already in `content`) belongs in the prompt;
         // the unused alternatives would just waste the model's context.
@@ -1188,7 +1214,7 @@ Always prefer structured output over plain paragraphs.`;
 
   // ===================== CHAT LOGIC =====================
   async function sendMessage(text) {
-    if ((!text.trim() && !currentAttachedImage) || isGenerating) return;
+    if ((!text.trim() && !attachedImages.length) || isGenerating || pageCapture) return;
     if (!activeBackend) return;
 
     try {
@@ -1203,17 +1229,22 @@ Always prefer structured output over plain paragraphs.`;
       return;
     }
 
-    const imageToSend = currentAttachedImage;
-    const typedPrompt = text.trim() || "Describe this image.";
-    let finalPrompt = typedPrompt;
+    const imagesToSend = attachedImages;
+    const typedPrompt = text.trim() || (attachedImagesNote ? "Summarise this page." : "Describe this image.");
+    const promptPreamble = [];
     if (currentContextText) {
-      finalPrompt = `Context:\n"""\n${currentContextText}\n"""\n\nUser Question:\n${typedPrompt}`;
+      promptPreamble.push(`Context:\n"""\n${currentContextText}\n"""`);
       // Clear context UI after using it
       clearContext();
     }
+    if (attachedImagesNote) promptPreamble.push(attachedImagesNote);
+    // extractTitle() relies on "User Question:" to title a chat with the typed text only.
+    const finalPrompt = promptPreamble.length
+      ? `${promptPreamble.join("\n\n")}\n\nUser Question:\n${typedPrompt}`
+      : typedPrompt;
 
     // Token pre-check (Nano only)
-    if (activeBackend === "nano" && !imageToSend && session &&
+    if (activeBackend === "nano" && !imagesToSend.length && session &&
         (typeof session.measureContextUsage === "function" || typeof session.countPromptTokens === "function")) {
       try {
         const tokenPromise = nanoMeasure(finalPrompt);
@@ -1245,8 +1276,8 @@ Always prefer structured output over plain paragraphs.`;
 
     // UI display keeps the user's typed text; history keeps the exact prompt
     // sent to the backend so selected context is preserved for Ollama.
-    const displayMessage = imageToSend ? `${typedPrompt}__IMG__${imageToSend}` : typedPrompt;
-    const historyMessage = imageToSend ? `${finalPrompt}__IMG__${imageToSend}` : finalPrompt;
+    const displayMessage = [typedPrompt, ...imagesToSend].join("__IMG__");
+    const historyMessage = [finalPrompt, ...imagesToSend].join("__IMG__");
     appendMessage("user", displayMessage);
     chatHistory.push({ role: "user", content: historyMessage });
 
@@ -1258,7 +1289,7 @@ Always prefer structured output over plain paragraphs.`;
     btnSend.classList.add("hidden");
     btnStop.classList.remove("hidden");
 
-    // Clear image immediately from UI after sending
+    // Clear images immediately from UI after sending
     clearAttachedImage();
 
     try {
@@ -1272,10 +1303,10 @@ Always prefer structured output over plain paragraphs.`;
 
       const results = await Promise.allSettled(group.bubbles.map((bubble, i) => {
         const stream = activeBackend === "nano"
-          ? streamNano(finalPrompt, bubble, imageToSend, nanoSessions[i])
+          ? streamNano(finalPrompt, bubble, imagesToSend, nanoSessions[i])
           : isProviderActive()
-            ? streamProvider(bubble, imageToSend)
-            : streamOllama(finalPrompt, bubble, imageToSend);
+            ? streamProvider(bubble, imagesToSend)
+            : streamOllama(finalPrompt, bubble);
         return stream.finally(() => group.markDone(i));
       }));
       await recordResponses(group, results);
@@ -1289,7 +1320,7 @@ Always prefer structured output over plain paragraphs.`;
       abortController = null;
       btnStop.classList.add("hidden");
       btnSend.classList.remove("hidden");
-      btnSend.disabled = !userInput.value.trim();
+      updateSendButton();
       updateTokenInfo();
       scheduleIdleUnload();
     }
@@ -1354,15 +1385,11 @@ Always prefer structured output over plain paragraphs.`;
 
   // ── Nano streaming ──
   // Returns the answer; recordResponses() stores it, because one reply may hold several answers.
-  async function streamNano(text, aiBubble, attachedImage = null, chatSession = session) {
-    const prompt = attachedImage
-      ? [{
-          role: "user",
-          content: [
-            { type: "text", value: text },
-            { type: "image", value: await padImageToSquare(base64ToImageBlob(attachedImage)) },
-          ],
-        }]
+  async function streamNano(text, aiBubble, images = [], chatSession = session) {
+    const imageParts = await Promise.all(images.map(async (image) =>
+      ({ type: "image", value: await padImageToSquare(base64ToImageBlob(image)) })));
+    const prompt = imageParts.length
+      ? [{ role: "user", content: [{ type: "text", value: text }, ...imageParts] }]
       : text;
 
     const stream = await chatSession.promptStreaming(prompt, {
@@ -1381,8 +1408,8 @@ Always prefer structured output over plain paragraphs.`;
   }
 
   // ── Ollama streaming ──
-  async function streamOllama(text, aiBubble, attachedImage) {
-    const body = await ollamaPromptStreaming(text, abortController.signal, attachedImage);
+  async function streamOllama(text, aiBubble) {
+    const body = await ollamaPromptStreaming(text, abortController.signal);
     const reader = body.getReader();
     const decoder = new TextDecoder();
 
@@ -1509,10 +1536,10 @@ Always prefer structured output over plain paragraphs.`;
   }
 
   // chatHistory already ends with the message being answered (sendMessage pushed it).
-  async function streamProvider(aiBubble, attachedImage) {
+  async function streamProvider(aiBubble, images) {
     const answer = await externalProvider.stream({
       history: chatHistory.slice(-MAX_CHAT_MESSAGES),
-      image: attachedImage,
+      images,
       signal: abortController.signal,
       settings: providerRequestSettings(),
       onText: (text) => {
@@ -1692,15 +1719,9 @@ Always prefer structured output over plain paragraphs.`;
       bubble.innerHTML = `<span class="typing-indicator"><span class="dot"></span><span class="dot"></span><span class="dot"></span></span>`;
     } else {
       if (role === "user" && text.includes("__IMG__")) {
-        const parts = text.split("__IMG__");
-        bubble.textContent = parts[0];
-        if (parts[1]) {
-          bubble.appendChild(document.createElement("br"));
-          const img = document.createElement("img");
-          img.src = `data:image/jpeg;base64,${parts[1]}`;
-          img.alt = "Attached image";
-          bubble.appendChild(img);
-        }
+        const [typedText, ...images] = text.split("__IMG__");
+        bubble.textContent = typedText;
+        bubble.appendChild(createMessageImages(images));
       } else {
         let html = "";
         if (reasoning) {
@@ -1720,6 +1741,19 @@ Always prefer structured output over plain paragraphs.`;
     messagesEl.appendChild(msg);
     scrollToBottom(true);
     return bubble;
+  }
+
+  // The images of a sent message; several (a full-page screenshot) are laid out as a grid.
+  function createMessageImages(images) {
+    const container = document.createElement("div");
+    container.className = images.length > 1 ? "msg-images msg-images-grid" : "msg-images";
+    images.forEach((base64, i) => {
+      const img = document.createElement("img");
+      img.src = `data:image/jpeg;base64,${base64}`;
+      img.alt = images.length > 1 ? `Attached image ${i + 1} of ${images.length}` : "Attached image";
+      container.appendChild(img);
+    });
+    return container;
   }
 
   // ── Multi-answer replies ("Responses at once") ──
@@ -1948,6 +1982,8 @@ Always prefer structured output over plain paragraphs.`;
   function processImage(file) {
     if (!file || !file.type.startsWith("image/")) return;
     if (!canAttachImages()) return;
+    // The user's own image wins over a page capture that is still running.
+    if (pageCapture) clearAttachedImage();
 
     const reader = new FileReader();
     reader.onload = (e) => {
@@ -1975,29 +2011,52 @@ Always prefer structured output over plain paragraphs.`;
     });
   }
 
-  // Makes an image the pending attachment and shows it in the preview card.
+  // Makes one image the pending attachment and shows it in the preview card.
   async function attachImageDataUrl(dataUrl, maxSide, label = "Attached image") {
     const compressed = await compressImageDataUrl(dataUrl, maxSide);
-    currentAttachedImage = compressed.split(",")[1];
+    setAttachedImages([compressed], label);
+  }
+
+  // Replaces whatever is waiting in the prompt bar. dataUrls are already compressed JPEGs.
+  function setAttachedImages(dataUrls, label, note = "") {
+    attachedImages = dataUrls.map(url => url.split(",")[1]);
+    attachedImagesNote = note;
     attachedImageIsAuto = false; // automatic callers set it back to true after this
-    imagePreviewImg.src = compressed;
+    showImagePreview(dataUrls, label);
+    updateSendButton();
+  }
+
+  function showImagePreview(dataUrls, label) {
+    imagePreviewThumbs.replaceChildren(...dataUrls.map((url, i) => {
+      const img = document.createElement("img");
+      img.src = url;
+      img.alt = `Attached image preview ${i + 1}`;
+      return img;
+    }));
     imagePreviewText.textContent = label;
     imagePreviewText.title = label;
     imagePreviewCard.classList.remove("hidden");
-    btnSend.disabled = isGenerating;
   }
 
+  // Also cancels a running page capture: its ✕, New chat and a model without vision all end here.
   function clearAttachedImage() {
-    currentAttachedImage = null;
+    pageCapture?.abort();
+    pageCapture = null;
+    attachedImages = [];
+    attachedImagesNote = "";
     imagePreviewCard.classList.add("hidden");
-    imagePreviewImg.src = "";
+    imagePreviewThumbs.replaceChildren();
     imagePreviewText.textContent = "Attached image";
     imagePreviewText.title = "";
     attachedImageIsAuto = false;
     fileUpload.value = "";
-    if (!userInput.value.trim()) {
-      btnSend.disabled = true;
-    }
+    updateSendButton();
+  }
+
+  // Nothing can be sent while an answer streams or a page capture is still adding images.
+  function updateSendButton() {
+    const empty = !userInput.value.trim() && !attachedImages.length;
+    btnSend.disabled = empty || isGenerating || Boolean(pageCapture);
   }
 
   function canAttachImages() {
@@ -2417,10 +2476,12 @@ Always prefer structured output over plain paragraphs.`;
   async function refreshAutoScreenshot(trigger) {
     const mode = getTabScreenshotMode();
     if (mode === "manual" || !canAttachImages()) return;
+    // A full-page capture scrolls the page itself and owns the prompt bar until it finishes.
+    if (pageCapture) return;
     if (trigger === "tab-change" && !followsTabChanges(mode)) return;
     if (trigger === "scroll" && !hasAutoScreenshotPending()) return;
     // Never replace an image the user chose themselves.
-    if (currentAttachedImage && !attachedImageIsAuto) return;
+    if (attachedImages.length && !attachedImageIsAuto) return;
     if (!(await hasTabAccess())) {
       showScreenshotAccessCard();
       return;
@@ -2456,7 +2517,7 @@ Always prefer structured output over plain paragraphs.`;
   }
 
   function hasAutoScreenshotPending() {
-    return Boolean(currentAttachedImage) && attachedImageIsAuto;
+    return attachedImages.length > 0 && attachedImageIsAuto;
   }
 
   // captureVisibleTab is limited to ~2 calls per second, and one navigation fires several
@@ -2568,9 +2629,10 @@ Always prefer structured output over plain paragraphs.`;
     closeAttachMenu();
     const granted = await requestTabAccess(); // first call, so it still has the click's gesture
     if (!granted) {
-      alert("MyLocalAI needs permission to see the page to take a screenshot. Nothing leaves your device.");
+      alert(TAB_ACCESS_NEEDED_MESSAGE);
       return;
     }
+    if (pageCapture) clearAttachedImage();
     try {
       const tab = await getActiveTab();
       if (!tab) throw new Error("No active tab");
@@ -2578,8 +2640,71 @@ Always prefer structured output over plain paragraphs.`;
       userInput.focus();
     } catch (err) {
       console.warn("[MyLocalAI] Screenshot failed:", err);
-      alert("Chrome doesn't allow screenshots of this page (browser pages like the New Tab or Web Store are protected).");
+      alert(PROTECTED_PAGE_MESSAGE);
     }
+  }
+
+  // ----- "Screenshot whole page" (full-page-capture.js takes the pictures) -----
+  const TAB_ACCESS_NEEDED_MESSAGE = "MyLocalAI needs permission to see the page to take a screenshot. Nothing leaves your device.";
+  const PROTECTED_PAGE_MESSAGE = "Chrome doesn't allow screenshots of this page (browser pages like the New Tab or Web Store are protected).";
+
+  async function screenshotFullPageFromMenu() {
+    closeAttachMenu();
+    const granted = await requestTabAccess(); // first call, so it still has the click's gesture
+    if (!granted) {
+      alert(TAB_ACCESS_NEEDED_MESSAGE);
+      return;
+    }
+    clearAttachedImage(); // also cancels an earlier capture
+    const controller = new AbortController();
+    pageCapture = controller;
+    showImagePreview([], "Capturing the whole page…");
+    updateSendButton();
+    try {
+      await attachFullPageScreenshot(controller.signal);
+      userInput.focus();
+    } catch (err) {
+      if (controller.signal.aborted) return; // cancelled by the user; the prompt bar already moved on
+      console.warn("[MyLocalAI] Full-page screenshot failed:", err);
+      clearAttachedImage();
+      alert(err?.code === "PAGE_CHANGED"
+        ? "The tab changed while capturing, so the full-page screenshot was cancelled. Stay on the page and try again."
+        : PROTECTED_PAGE_MESSAGE);
+    } finally {
+      // A newer capture may already own the prompt bar.
+      if (pageCapture === controller) pageCapture = null;
+      updateSendButton();
+    }
+  }
+
+  async function attachFullPageScreenshot(signal) {
+    const tab = await getActiveTab();
+    if (!tab) throw new Error("No active tab");
+    const { images, totalParts } = await window.MyLocalAIFullPage.capture({
+      tab,
+      signal,
+      onProgress: (part, count) => {
+        if (!signal.aborted) showImagePreview([], `Capturing the whole page… ${part} of ${count}`);
+      },
+    });
+    // Each part keeps the size of a normal screenshot, which is what keeps its text readable.
+    const compressed = await Promise.all(images.map(url => compressImageDataUrl(url, MAX_SCREENSHOT_SIDE)));
+    if (signal.aborted) return;
+    const { label, note } = describePageParts(tab.title || "this tab", compressed.length, totalParts);
+    setAttachedImages(compressed, label, note);
+  }
+
+  // The label is for the user; the note tells the model that the images are one page, in order.
+  function describePageParts(title, captured, total) {
+    const cutOff = captured < total;
+    if (captured === 1 && !cutOff) return { label: `Screenshot · ${title}`, note: "" };
+    const label = cutOff
+      ? `Page too long: first ${captured} of ${total} parts · ${title}`
+      : `Whole page in ${captured} images · ${title}`;
+    let note = `The ${captured} attached images are consecutive screenshots of one web page, ` +
+      "ordered from top to bottom. Neighbouring images overlap slightly.";
+    if (cutOff) note += " The page continues below the last image, which was not captured.";
+    return { label, note };
   }
 
   // ===================== EVENT LISTENERS =====================
@@ -2628,7 +2753,7 @@ Always prefer structured output over plain paragraphs.`;
 
     userInput.addEventListener("input", () => {
       autoResizeInput();
-      btnSend.disabled = (!userInput.value.trim() && !currentAttachedImage) || isGenerating;
+      updateSendButton();
     });
 
     btnAttach.addEventListener("click", toggleAttachMenu);
@@ -2637,6 +2762,7 @@ Always prefer structured output over plain paragraphs.`;
       fileUpload.click();
     });
     btnScreenshotTab.addEventListener("click", screenshotTabFromMenu);
+    btnScreenshotPage.addEventListener("click", screenshotFullPageFromMenu);
     document.addEventListener("click", (e) => {
       if (!attachWrap.contains(e.target)) closeAttachMenu();
     });

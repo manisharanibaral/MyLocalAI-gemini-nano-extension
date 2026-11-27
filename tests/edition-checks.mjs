@@ -30,7 +30,7 @@ for (const [edition, { backends, hosts }] of Object.entries(expected)) {
   assert.deepEqual(loadConfig(`${dir}config.js`).backends, backends, `${edition} config backends`);
   assert.equal(Boolean(manifest.host_permissions?.length), hosts, `${edition} host_permissions`);
   assert.equal(manifest.side_panel.default_path, "sidebar.html");
-  for (const file of ["sidebar.html", "sidebar.js", "sidebar.css", "model-switcher.js", "background.js", "purify.min.js", "marked.umd.js", "icons/icon128.png"]) {
+  for (const file of ["sidebar.html", "sidebar.js", "sidebar.css", "model-switcher.js", "full-page-capture.js", "background.js", "purify.min.js", "marked.umd.js", "icons/icon128.png"]) {
     assert.ok(existsSync(new URL(`${dir}${file}`, root)), `${edition} should ship ${file}`);
   }
   names.add(manifest.name);

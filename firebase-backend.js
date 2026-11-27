@@ -261,7 +261,7 @@
 
   // ===================== MULTI-TURN → SINGLE PROMPT =====================
   // chatHistory entries are { role: "user"|"assistant", content }, user images stored as
-  // "<text>__IMG__<base64>". The last entry is the message being answered.
+  // "<text>__IMG__<base64>__IMG__<base64>…". The last entry is the message being answered.
   function buildConversationPrompt(history) {
     const turns = history
       .filter((m) => m.role === "user" || m.role === "assistant")
@@ -291,9 +291,10 @@
     return kept;
   }
 
-  function buildRequest(prompt, image) {
+  function buildRequest(prompt, images = []) {
+    if (images.length === 0) return prompt;
     // Images are re-encoded as JPEG by sidebar.js, one of the two types on-device accepts.
-    return image ? [prompt, { inlineData: { data: image, mimeType: "image/jpeg" } }] : prompt;
+    return [prompt, ...images.map((data) => ({ inlineData: { data, mimeType: "image/jpeg" } }))];
   }
 
   // ===================== STREAMING =====================
@@ -305,11 +306,11 @@
     return run;
   }
 
-  async function streamOnce({ history, image, signal, onText, settings }) {
+  async function streamOnce({ history, images, signal, onText, settings }) {
     throwIfAborted(signal);
     startBackgroundDownload(settings);
     const model = await getModel(settings);
-    const result = await model.generateContentStream(buildRequest(buildConversationPrompt(history), image), { signal });
+    const result = await model.generateContentStream(buildRequest(buildConversationPrompt(history), images), { signal });
 
     let fullText = "";
     for await (const chunk of result.stream) {
@@ -481,5 +482,6 @@
     listModels,
     selectModel,
     buildConversationPrompt, // exposed for tests/firebase-checks.mjs
+    buildRequest,            // exposed for tests/full-page-checks.mjs
   };
 })();
