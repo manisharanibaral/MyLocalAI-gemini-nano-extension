@@ -69,6 +69,13 @@
   align-items: center;
   justify-content: center;
 }
+/* Keyboard users need to see which row or button has focus. */
+.history-item-content:focus-visible,
+.btn-delete-chat:focus-visible {
+  outline: 2px solid var(--border-focus);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
 .btn-delete-chat:hover {
   color: hsl(0, 72%, 55%);
   background: hsla(0, 72%, 55%, 0.1);

@@ -249,3 +249,24 @@ assert.match(showResponseError, /recoverIfNanoModelRemoved\(\)/, "failed Nano pr
 assert.match(showResponseError, /describeNanoPromptError\(err\)/, "failed Nano prompts should use the readable error");
 assert.match(showResponseError, /AbortError[\s\S]*streamedText\.get\(bubble\)[\s\S]*stopped: true/, "a stopped answer should keep its streamed text");
 assert.equal(/one time only/i.test(read("README.md")), false, "README should not promise a one-time Nano download");
+
+// History: the delete-chat icon is parsed as XML, so it only renders with the SVG namespace.
+const renderHistoryList = functionBody(sidebarJs, "renderHistoryList");
+assert.match(renderHistoryList, /"image\/svg\+xml"/, "the delete-chat icon should still be parsed as SVG");
+assert.match(renderHistoryList, /<svg xmlns="http:\/\/www\.w3\.org\/2000\/svg"/,
+  "the delete-chat icon needs xmlns, or the trash button is invisible");
+assert.match(renderHistoryList, /delBtn\.setAttribute\("aria-label", "Delete chat"\)/, "the icon-only delete button needs an accessible name");
+
+// History: deleting a chat has no undo, so the trash button asks first (deleteConversation itself stays dialog-free).
+assert.match(renderHistoryList, /if \(!confirmDeleteChat\(title\)\) return;\s*deleteConversation\(s\.id\)/,
+  "the trash button should confirm before deleting a chat");
+assert.match(functionBody(sidebarJs, "confirmDeleteChat"), /confirm\(/, "confirmDeleteChat should ask the user");
+assert.equal(/confirm\(/.test(functionBody(sidebarJs, "deleteConversation")), false,
+  "deleteConversation must not open a dialog; callers confirm first");
+
+// History: past chats open from the keyboard too, not only with a mouse click.
+assert.match(renderHistoryList, /contentDiv\.setAttribute\("role", "button"\)/, "a history row should be announced as a button");
+assert.match(renderHistoryList, /contentDiv\.tabIndex = 0/, "a history row should be reachable with Tab");
+assert.match(renderHistoryList, /addEventListener\("keydown"[\s\S]*"Enter"[\s\S]*" "[\s\S]*openChat\(\)/,
+  "Enter and Space should open a history row");
+assert.match(sidebarCss, /\.history-item-content:focus-visible/, "a focused history row should be visible");
