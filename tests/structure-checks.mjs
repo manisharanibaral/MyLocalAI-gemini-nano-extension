@@ -98,4 +98,7 @@ function ndjsonStream(frames) {
   assert.match(panel.element("#status-message").textContent, /Gemini Nano is not available/);
 }
 
+// ===================== BEHAVIOUR, BY TOPIC =====================
+await import("./panel/chat-saving.mjs");
+
 console.log("Structure checks passed");

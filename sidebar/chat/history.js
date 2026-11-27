@@ -32,11 +32,14 @@ function loadConversation(id) {
   updateTokenInfo();
   historyPanel.classList.add("hidden");
 
-  // Give the loaded conversation a fresh Nano context (the old chat's turns must not leak in)
+  // Nano keeps the conversation inside its session, so the reopened chat gets a fresh one
+  // (the previous chat's turns must not leak in) with this chat's turns put back into it.
   if (activeBackend === "nano" && session) {
-    resetNanoChat().then(hideStatus).catch((err) => {
-      console.warn("[MyLocalAI] Could not reset Nano chat:", err.message);
-    });
+    resetNanoChat()
+      .then(() => restoreNanoContext(chatHistory))
+      .then(showNanoMemoryNote)
+      .then(hideStatus)
+      .catch((err) => console.warn("[MyLocalAI] Could not reset Nano chat:", err.message));
   }
 }
 
@@ -101,7 +104,7 @@ function renderHistoryList() {
 }
 
 function deleteConversation(id) {
-  chatSessions = chatSessions.filter(s => s.id !== id);
+  chatSessions = readStoredSessions().filter(s => s.id !== id);
   saveAllSessions();
   renderHistoryList();
 
@@ -112,13 +115,10 @@ function deleteConversation(id) {
 
 async function startNewChat() {
   if (isGenerating) stopGeneration();
-  chatHistory = [];
-  currentSessionId = Date.now().toString();
+  startNewChatRecord();
   clearContext();
   clearAttachedImage();
-  messagesEl.innerHTML = "";
-  messagesEl.classList.add("hidden");
-  welcomeScreen.classList.remove("hidden");
+  clearChatView();
 
   try {
     if (activeBackend === "nano") {
@@ -128,4 +128,10 @@ async function startNewChat() {
   } catch (_) { }
   updateTokenInfo();
   refreshAutoScreenshot("open"); // a new chat starts with the page you're on
+}
+
+function clearChatView() {
+  messagesEl.innerHTML = "";
+  messagesEl.classList.add("hidden");
+  welcomeScreen.classList.remove("hidden");
 }

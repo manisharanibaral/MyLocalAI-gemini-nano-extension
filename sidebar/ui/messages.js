@@ -41,6 +41,15 @@ function appendMessage(role, text, streaming = false, reasoning = "") {
   return bubble;
 }
 
+// A short line from MyLocalAI itself (not the model); shown in the chat but never saved.
+function appendChatNote(text) {
+  const note = document.createElement("div");
+  note.className = "msg-note";
+  note.textContent = text;
+  messagesEl.appendChild(note);
+  scrollToBottom(true);
+}
+
 // The images of a sent message; several (a full-page screenshot) are laid out as a grid.
 function createMessageImages(images) {
   const container = document.createElement("div");

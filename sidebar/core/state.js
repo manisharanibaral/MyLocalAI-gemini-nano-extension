@@ -32,6 +32,8 @@ let lastScrollTop = 0;
 let scrollQueued = false;
 let markdownRendererCache; // undefined = not built yet
 const pendingRenders = new WeakMap();
+// The latest text streamed into each answer bubble, so a stopped answer can be saved as written.
+const streamedText = new WeakMap();
 let listenersInitialized = false;
 let idleUnloadTimer = null;     // fires unloadModel() after a quiet period
 let isModelUnloaded = false;    // true while the model is released from memory

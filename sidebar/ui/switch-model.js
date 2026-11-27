@@ -135,9 +135,8 @@ async function switchToNano() {
     throw err;
   }
   activeBackend = "nano";
-  if (chatHistory.length > 0) {
-    appendMessage("ai", "ℹ️ Switched to Gemini Nano. It starts with a clean memory, so it can't see the earlier messages in this chat.");
-  }
+  // A new Nano session knows nothing of the chat so far; give it the chat's turns back.
+  showNanoMemoryNote(await restoreNanoContext(chatHistory));
 }
 
 function describeSwitchError(err) {

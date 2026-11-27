@@ -6,6 +6,24 @@ async function sendMessage(text) {
   if ((!text.trim() && !attachedImages.length) || isGenerating || pageCapture) return;
   if (!activeBackend) return;
 
+  // Set before the first await: a second Enter while the model reloads or the prompt is
+  // measured must not send the same message again.
+  isGenerating = true;
+  try {
+    await sendMessageNow(text);
+  } finally {
+    isGenerating = false;
+    modelSwitcher?.setDisabled(false);
+    abortController = null;
+    btnStop.classList.add("hidden");
+    btnSend.classList.remove("hidden");
+    updateSendButton();
+    updateTokenInfo();
+    scheduleIdleUnload();
+  }
+}
+
+async function sendMessageNow(text) {
   try {
     await ensureModelLoaded();
   } catch (err) {
@@ -14,7 +32,6 @@ async function sendMessage(text) {
     welcomeScreen.classList.add("hidden");
     messagesEl.classList.remove("hidden");
     appendMessage("ai", `⚠️ Could not reload the model: ${err.message}`);
-    scheduleIdleUnload();
     return;
   }
 
@@ -32,32 +49,7 @@ async function sendMessage(text) {
     ? `${promptPreamble.join("\n\n")}\n\nUser Question:\n${typedPrompt}`
     : typedPrompt;
 
-  // Token pre-check (Nano only)
-  if (activeBackend === "nano" && !imagesToSend.length && session &&
-      (typeof session.measureContextUsage === "function" || typeof session.countPromptTokens === "function")) {
-    try {
-      const tokenPromise = nanoMeasure(finalPrompt);
-      const timeout = new Promise((_, rej) => setTimeout(() => rej(new Error("TIMEOUT")), 2000));
-      const promptTokens = await Promise.race([tokenPromise, timeout]);
-      const remaining = Math.max(0, nanoWindow() - nanoUsed());
-
-      if (remaining > 0 && promptTokens > remaining) {
-        welcomeScreen.classList.add("hidden");
-        messagesEl.classList.remove("hidden");
-        appendMessage("ai", `⚠️ Context limit reached!\n\n~${promptTokens} tokens needed, ${remaining} remain.\nStarting a fresh session…`);
-        scrollToBottom(true);
-        await resetNanoChat();
-        chatHistory = [];
-        updateTokenInfo();
-        appendMessage("ai", "✅ Session reset. Please re-send your message.");
-        scrollToBottom(true);
-        hideStatus();
-        // ensureModelLoaded() stopped the idle timer; this early return skips the finally below.
-        scheduleIdleUnload();
-        return;
-      }
-    } catch (_) { /* skip check */ }
-  }
+  if (await nanoContextIsFull(finalPrompt, imagesToSend)) return;
 
   // Show UI
   welcomeScreen.classList.add("hidden");
@@ -69,11 +61,12 @@ async function sendMessage(text) {
   const historyMessage = [finalPrompt, ...imagesToSend].join("__IMG__");
   appendMessage("user", displayMessage);
   chatHistory.push({ role: "user", content: historyMessage });
+  // The reply belongs to this chat even if the user starts or opens another one meanwhile.
+  const chat = { id: currentSessionId, history: chatHistory };
 
   userInput.value = "";
   autoResizeInput();
   btnSend.disabled = true;
-  isGenerating = true;
   modelSwitcher?.setDisabled(true);
   btnSend.classList.add("hidden");
   btnStop.classList.remove("hidden");
@@ -98,63 +91,85 @@ async function sendMessage(text) {
           : streamOllama(finalPrompt, bubble);
       return stream.finally(() => group.markDone(i));
     }));
-    await recordResponses(group, results);
+    await recordResponses(group, results, chat);
   } catch (err) {
     // Only reached if setting up the reply fails; per-answer errors are shown in their tab.
     console.error("[MyLocalAI] Could not start the reply:", err);
     appendMessage("ai", `⚠️ Error: ${err.message}`);
-  } finally {
-    isGenerating = false;
-    modelSwitcher?.setDisabled(false);
-    abortController = null;
-    btnStop.classList.add("hidden");
-    btnSend.classList.remove("hidden");
-    updateSendButton();
-    updateTokenInfo();
-    scheduleIdleUnload();
+    saveConversation(chat.id, chat.history);
   }
 }
 
-// Shows each answer's outcome and stores the reply in history. The chat continues from the
-// first answer that succeeded; the user can switch to another one with the tabs.
-async function recordResponses(group, results) {
+// Nano can't take a prompt bigger than its free context. Then the chat continues as a new
+// one (the current chat stays in History) and the user sends again. Returns true in that case.
+async function nanoContextIsFull(prompt, images) {
+  if (activeBackend !== "nano" || images.length || !session) return false;
+  if (typeof session.measureContextUsage !== "function" && typeof session.countPromptTokens !== "function") return false;
+  let promptTokens;
+  try {
+    const timeout = new Promise((_, rej) => setTimeout(() => rej(new Error("TIMEOUT")), 2000));
+    promptTokens = await Promise.race([nanoMeasure(prompt), timeout]);
+  } catch (_) {
+    return false; // can't measure: let Nano decide
+  }
+  const remaining = Math.max(0, nanoWindow() - nanoUsed());
+  if (remaining === 0 || promptTokens <= remaining) return false;
+
+  await startNewChat();
+  welcomeScreen.classList.add("hidden");
+  messagesEl.classList.remove("hidden");
+  appendMessage("ai", `⚠️ Context limit reached!\n\n~${promptTokens} tokens needed, ${remaining} remain.\nStarted a new chat; the previous one is saved in History. Please re-send your message.`);
+  hideStatus();
+  return true;
+}
+
+// Shows each answer's outcome and stores the reply in its chat. The chat continues from the
+// first answer that has text (a stopped answer keeps what it wrote); the user can switch to
+// another one with the tabs. The question is saved even when no answer came back.
+async function recordResponses(group, results, chat) {
   const variants = [];
   for (let i = 0; i < results.length; i++) {
     const result = results[i];
     if (result.status === "fulfilled") {
       variants.push(result.value);
     } else {
-      const errorText = await showResponseError(group.bubbles[i], result.reason);
-      group.markFailed(i);
-      variants.push({ content: errorText, reasoning: "", failed: true });
+      const variant = await showResponseError(group.bubbles[i], result.reason);
+      if (variant.failed) group.markFailed(i);
+      variants.push(variant);
     }
   }
 
+  const isOpenChat = chat.id === currentSessionId;
   const selected = variants.findIndex(v => !v.failed);
-  if (selected === -1) return; // nothing usable (all failed or stopped), as before
-
-  const entry = { role: "assistant", content: variants[selected].content, reasoning: variants[selected].reasoning };
-  if (variants.length > 1) {
-    entry.variants = variants;
-    entry.selected = selected;
+  if (selected >= 0) {
+    const entry = { role: "assistant", content: variants[selected].content, reasoning: variants[selected].reasoning };
+    if (variants.length > 1) {
+      entry.variants = variants;
+      entry.selected = selected;
+    }
+    chat.history.push(entry);
+    if (isOpenChat) {
+      group.setActive(selected);
+      bindVariantSelection(group, entry);
+      if (activeBackend === "nano") adoptNanoVariant(selected);
+    }
   }
-  chatHistory.push(entry);
-  group.setActive(selected);
-  bindVariantSelection(group, entry);
-  if (activeBackend === "nano") adoptNanoVariant(selected);
-  saveConversation();
+  saveConversation(chat.id, chat.history);
 }
 
-// Renders a failed or stopped answer in its bubble and returns the text that was shown.
+const STOPPED_TEXT = "(Generation stopped)";
+
+// Renders a failed or stopped answer in its bubble and returns it as a history variant.
+// A stopped answer keeps the text streamed so far; one with no text counts as failed.
 async function showResponseError(bubble, err) {
   if (err?.name === "AbortError") {
-    // Preserve the streamed text and any reasoning blocks.
-    bubble.dataset.done = "1";
-    bubble.style.minHeight = "";
-    const currentHtml = bubble.innerHTML.replace('<span class="cursor">​</span>', "");
-    setSafeHtml(bubble, currentHtml || "(Generation stopped)");
-    bubble.parentElement?.querySelector(".msg-actions")?.classList.remove("hidden");
-    return getResponseText(bubble) || "(Generation stopped)";
+    const partial = streamedText.get(bubble);
+    if (partial?.text.trim()) {
+      finalizeMessage(bubble, partial.text, partial.reasoning);
+      return { content: partial.text, reasoning: partial.reasoning, stopped: true };
+    }
+    finalizeMessage(bubble, STOPPED_TEXT);
+    return { content: STOPPED_TEXT, reasoning: "", failed: true };
   }
 
   let message;
@@ -169,7 +184,7 @@ async function showResponseError(bubble, err) {
     message = `⚠️ Error: ${err?.message}`;
   }
   finalizeMessage(bubble, message);
-  return message;
+  return { content: message, reasoning: "", failed: true };
 }
 
 function stopGeneration() {

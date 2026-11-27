@@ -197,7 +197,8 @@ import { functionBody, read, scriptPaths, sidebarCss, sidebarHtml, sidebarJs, si
   assert.match(functionBody(sidebarJs, "updateBackendUI"), /refreshModelPill\(\)/, "the pill follows the active backend");
   assert.match(functionBody(sidebarJs, "setupEventListeners"), /setupModelSwitcher\(\)/, "the switcher is set up once with the other listeners");
   const sendMessageBody = functionBody(sidebarJs, "sendMessage");
-  assert.match(sendMessageBody, /isGenerating = true;\s*modelSwitcher\?\.setDisabled\(true\)/, "no switching while an answer streams");
+  assert.match(sendMessageBody, /isGenerating = true;/, "no switching while a message is being sent");
+  assert.match(functionBody(sidebarJs, "sendMessageNow"), /modelSwitcher\?\.setDisabled\(true\)/, "no switching while an answer streams");
   assert.match(sendMessageBody, /isGenerating = false;\s*modelSwitcher\?\.setDisabled\(false\)/, "switching is re-enabled afterwards");
 
   const switchModel = functionBody(sidebarJs, "switchModel");
@@ -212,7 +213,8 @@ import { functionBody, read, scriptPaths, sidebarCss, sidebarHtml, sidebarJs, si
   assert.match(toOllama, /destroyNanoSessions\(\)/, "leaving Nano frees its memory");
   const toNano = functionBody(sidebarJs, "switchToNano");
   assert.match(toNano, /modelSupportsVision = previousVision/, "a failed Nano switch restores the capability flags");
-  assert.match(toNano, /can't see the earlier messages/, "the user is told Nano starts without the chat so far");
+  assert.match(toNano, /showNanoMemoryNote\(await restoreNanoContext\(chatHistory\)\)/, "Nano gets the chat so far, and the user is told what it missed");
+  assert.match(functionBody(sidebarJs, "showNanoMemoryNote"), /can't see the earlier messages/, "the note says when Nano has none of the chat");
 
   // Only editions with more than one model get a pill.
   const hasChoices = new Function("ollamaEnabled", "externalProvider", functionBody(sidebarJs, "modelSwitcherHasChoices"));

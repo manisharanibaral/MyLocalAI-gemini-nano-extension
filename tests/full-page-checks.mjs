@@ -231,7 +231,7 @@ assert.match(functionSource(sidebarJs, "screenshotFullPageFromMenu"), /\{\s*clos
   "site access is requested while the click still counts as a user gesture");
 assert.match(functionSource(sidebarJs, "refreshAutoScreenshot"), /if \(pageCapture\) return;/, "auto screenshots stay out of a running capture");
 assert.match(functionSource(sidebarJs, "sendMessage"), /isGenerating \|\| pageCapture\) return;/, "Enter can't send half a capture");
-assert.match(functionSource(sidebarJs, "sendMessage"), /if \(attachedImagesNote\) promptPreamble\.push\(attachedImagesNote\);/, "the model is told the images are one page");
+assert.match(functionSource(sidebarJs, "sendMessageNow"), /if \(attachedImagesNote\) promptPreamble\.push\(attachedImagesNote\);/, "the model is told the images are one page");
 assert.match(functionSource(sidebarJs, "processImage"), /if \(pageCapture\) clearAttachedImage\(\);/, "the user's own image cancels a capture");
 assert.match(read(".githooks/pre-commit"), /node tests\/full-page-checks\.mjs/, "the pre-commit hook should run these checks");
 

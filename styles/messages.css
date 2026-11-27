@@ -29,6 +29,16 @@
   to   { opacity: 1; transform: translateY(0); }
 }
 
+/* A note from MyLocalAI itself, e.g. what Gemini Nano still remembers of a reopened chat. */
+.msg-note {
+  align-self: center;
+  max-width: 90%;
+  padding: 4px 10px;
+  font-size: 11px;
+  color: var(--text-muted);
+  text-align: center;
+}
+
 .msg-label {
   font-size: 10px;
   font-weight: 700;

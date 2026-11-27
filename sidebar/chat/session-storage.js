@@ -4,9 +4,8 @@
 // ===================== CONVERSATION STORAGE =====================
 function loadSessions() {
   try {
-    const saved = localStorage.getItem("chatSessions");
-    if (saved) {
-      chatSessions = JSON.parse(saved) || [];
+    if (localStorage.getItem("chatSessions") !== null) {
+      chatSessions = readStoredSessions();
     } else {
       // Migration: Check for old single-chat format
       const oldSaved = localStorage.getItem("chatHistory");
@@ -29,6 +28,41 @@ function loadSessions() {
   } catch (e) {
     console.warn("[MyLocalAI] Could not load sessions", e);
   }
+}
+
+// The saved list as it is in storage right now. Another window's panel writes the same key,
+// so every change starts from this instead of from the copy loaded when this panel opened.
+function readStoredSessions() {
+  try {
+    return JSON.parse(localStorage.getItem("chatSessions")) || [];
+  } catch (e) {
+    console.warn("[MyLocalAI] Could not read saved chats", e);
+    return chatSessions; // unreadable storage must not wipe the list we have
+  }
+}
+
+// Keeps History current while another window's panel saves or deletes chats.
+// The storage event fires only in the other extension pages, never in the one that wrote.
+function watchSessionsFromOtherPanels() {
+  window.addEventListener("storage", (event) => {
+    if (event.key !== "chatSessions" && event.key !== null) return; // null: storage was cleared
+    chatSessions = readStoredSessions();
+    if (!historyPanel.classList.contains("hidden")) renderHistoryList();
+  });
+}
+
+// Ids are timestamps; two chats started in the same millisecond must still get their own.
+function createSessionId() {
+  let id = Date.now();
+  while (String(id) === currentSessionId || chatSessions.some(s => s.id === String(id))) id += 1;
+  return String(id);
+}
+
+// The open chat becomes a new, empty record. The previous chat keeps its id, so it stays
+// in History instead of being overwritten by the next save.
+function startNewChatRecord() {
+  chatHistory = [];
+  currentSessionId = createSessionId();
 }
 
 function saveAllSessions() {
@@ -70,14 +104,17 @@ function withoutImages(savedSession) {
   return { ...savedSession, history };
 }
 
-function saveConversation() {
-  if (chatHistory.length === 0) return;
+// A reply can finish after the user started or opened another chat, so the caller passes the
+// chat the reply belongs to; by default that is the open one.
+function saveConversation(sessionId = currentSessionId, history = chatHistory) {
+  if (history.length === 0) return;
 
-  const existingIndex = chatSessions.findIndex(s => s.id === currentSessionId);
+  chatSessions = readStoredSessions();
+  const existingIndex = chatSessions.findIndex(s => s.id === sessionId);
   const sessionData = {
-    id: currentSessionId,
-    title: extractTitle(chatHistory),
-    history: chatHistory.slice(-MAX_CHAT_MESSAGES),
+    id: sessionId,
+    title: extractTitle(history),
+    history: history.slice(-MAX_CHAT_MESSAGES),
     timestamp: Date.now()
   };
 
@@ -93,6 +130,11 @@ function saveConversation() {
   if (!historyPanel.classList.contains("hidden")) {
     renderHistoryList();
   }
+}
+
+// The text of a message without its images.
+function messageText(message) {
+  return String(message.content).split("__IMG__")[0];
 }
 
 function extractTitle(history) {

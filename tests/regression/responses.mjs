@@ -22,11 +22,11 @@ assert.match(sidebarJs, /const MAX_RESPONSE_COUNT = 5;/, "at most five answers a
 assert.match(functionBody(sidebarJs, "saveSettings"), /responseCount/, "responses-at-once should be saved");
 assert.match(functionBody(sidebarJs, "loadSettings"), /responseCount[\s\S]*setResponseCount/, "responses-at-once should be restored");
 {
-  const sendBody = functionBody(sidebarJs, "sendMessage");
+  const sendBody = functionBody(sidebarJs, "sendMessageNow");
   assert.match(sendBody, /Promise\.allSettled\(group\.bubbles\.map/, "answers should stream in parallel, one failure must not cancel the rest");
   assert.match(sendBody, /createNanoVariantSessions\(getResponseCount\(\)\)/, "Nano answers need one session each");
   assert.match(sendBody, /streamNano\(finalPrompt, bubble, imagesToSend, nanoSessions\[i\]\)/, "each Nano answer should use its own session");
-  assert.match(sendBody, /recordResponses\(group, results\)/, "the reply should be stored once, after all answers settle");
+  assert.match(sendBody, /recordResponses\(group, results, chat\)/, "the reply should be stored once, after all answers settle");
 }
 assert.equal(/chatHistory\.push/.test(streamNano), false, "streamNano must not push history itself (recordResponses does)");
 assert.equal(/chatHistory\.push/.test(functionBody(sidebarJs, "streamOllama")), false, "streamOllama must not push history itself");
@@ -34,7 +34,8 @@ assert.match(streamNano, /chatSession\.promptStreaming/, "streamNano should prom
 {
   const record = functionBody(sidebarJs, "recordResponses");
   assert.match(record, /findIndex\(v => !v\.failed\)/, "the chat should continue from the first successful answer");
-  assert.match(record, /if \(selected === -1\) return;/, "a reply with no usable answer must not be stored");
+  assert.match(record, /if \(selected >= 0\) \{[\s\S]*\}\s*saveConversation\(chat\.id, chat\.history\);/,
+    "the question is saved even when no answer came back");
   assert.match(record, /variants\.length > 1[\s\S]*entry\.variants = variants/, "single-answer replies keep the old history shape");
   assert.match(record, /adoptNanoVariant\(selected\)/, "Nano should continue from the selected answer's session");
 }

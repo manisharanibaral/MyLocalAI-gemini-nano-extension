@@ -111,6 +111,8 @@ function setupEventListeners() {
     historyPanel.classList.add("hidden");
   });
 
+  watchSessionsFromOtherPanels();
+
   btnHistory.addEventListener("click", () => {
     settingsPanel.classList.add("hidden");
     historyPanel.classList.toggle("hidden");

@@ -5,6 +5,7 @@
 // can only grow while streaming (min-height ratchet) so half-parsed markdown
 // never makes the response area jump smaller.
 function renderStreamingText(bubble, text, reasoning = "") {
+  streamedText.set(bubble, { text, reasoning });
   const pending = pendingRenders.get(bubble);
   if (pending) { pending.text = text; pending.reasoning = reasoning; return; }
   pendingRenders.set(bubble, { text, reasoning });

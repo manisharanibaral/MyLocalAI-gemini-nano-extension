@@ -30,12 +30,12 @@ node tests/regression-checks.mjs     # static checks over source files (no brows
 node tests/edition-checks.mjs        # runs the build, then asserts each dist/ edition's config + manifest
 node tests/firebase-checks.mjs       # firebase-hybrid edition: files, SHARED_FILES, manifest, opt-in cloud, prompt builder
 node tests/full-page-checks.mjs      # whole-page screenshot, stop & save, image preview/removal; runs against a fake page + chrome API
-node tests/structure-checks.mjs      # 500-line limit, sidebar.html load list, and a boot of the panel against a fake browser
+node tests/structure-checks.mjs      # 500-line limit, sidebar.html load list, a boot of the panel, and the behaviour tests in tests/panel/ (fake browser + fake models)
 
 cd tools/firebase-bundle && npm install && npm run build   # rebuild vendor/firebase-ai.js (only package.json lives here, never in the root)
 ```
 
-Tests are plain `node:assert` scripts, so there is no runner or single-test flag: run one file at a time. Most read source files as text through `tests/helpers/sources.mjs`, which treats the `sidebar/` scripts listed in `sidebar.html` as one source (`functionBody()` extracts a function by name), so moving a function between files is safe but renaming one can break a check. `regression-checks.mjs` only imports the topic files in `tests/regression/`; `full-page-checks.mjs` also imports those in `tests/full-page/` and shares `tests/helpers/fake-page.mjs` with them.
+Tests are plain `node:assert` scripts, so there is no runner or single-test flag: run one file at a time. Most read source files as text through `tests/helpers/sources.mjs`, which treats the `sidebar/` scripts listed in `sidebar.html` as one source (`functionBody()` extracts a function by name), so moving a function between files is safe but renaming one can break a check. `regression-checks.mjs` only imports the topic files in `tests/regression/`; `full-page-checks.mjs` also imports those in `tests/full-page/` and shares `tests/helpers/fake-page.mjs` with them. `structure-checks.mjs` imports the topic files in `tests/panel/`, which boot the panel with `tests/helpers/fake-panel.mjs` and drive it against the fake Nano/Ollama in `tests/panel/fake-models.mjs`.
 
 **Git hook** (`.githooks/pre-commit`, enabled with `git config core.hooksPath .githooks` — run this once per clone): every commit first runs all five test scripts and is blocked if any fails. On every second commit (by total commit count) it also bumps the patch version in `manifest.json` via `scripts/bump-version.mjs` and stages it.
 

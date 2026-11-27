@@ -7,9 +7,12 @@ async function destroySession() {
   destroyNanoSessions();
 }
 
+// Restarting drops the model's memory of the chat, so it continues as a new chat; the old one
+// stays in History under its own id.
 async function restartSession() {
   await destroySession();
-  chatHistory = [];
+  startNewChatRecord();
+  clearChatView();
   activeBackend = null;
   clearAttachedImage();
   showStatus("loading", "Restarting…", "Reconnecting to AI backend");
@@ -18,7 +21,7 @@ async function restartSession() {
 
 // ===================== IDLE UNLOAD (free memory) =====================
 // Chat history lives in the UI/storage, so releasing the model loses nothing visible.
-// Nano forgets its in-model context after a reload; Ollama re-sends history on each request.
+// Nano gets the chat's turns back after a reload; Ollama re-sends history on each request.
 function scheduleIdleUnload() {
   clearTimeout(idleUnloadTimer);
   const delayMs = getIdleUnloadMs();
@@ -61,6 +64,7 @@ async function ensureModelLoaded() {
   if (activeBackend === "nano") {
     showStatus("loading", "Reloading model…", "Loading Gemini Nano back into memory");
     await initNanoSession();
+    showNanoMemoryNote(await restoreNanoContext(chatHistory));
     hideStatus();
   }
   isModelUnloaded = false;

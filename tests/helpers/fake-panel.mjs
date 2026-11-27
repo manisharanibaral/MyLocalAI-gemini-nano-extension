@@ -75,7 +75,9 @@ function fakeStorage() {
 // Vendor libraries are left out: the panel falls back to plain text without them.
 export function bootPanel({ globals = {} } = {}) {
   const document = fakeDocument();
+  const windowListeners = {};
   const context = vm.createContext({
+    addEventListener: (type, handler) => (windowListeners[type] ||= []).push(handler),
     console: { log() { }, info() { }, warn() { }, error: console.error },
     document,
     localStorage: fakeStorage(),
@@ -97,6 +99,8 @@ export function bootPanel({ globals = {} } = {}) {
     element: (selector) => document.querySelector(selector),
     // Reads a top-level `let`/`const` of the panel scripts, which are not properties of the context.
     evaluate: (code) => vm.runInContext(code, context),
+    // Delivers a window event, e.g. the "storage" event another window's panel causes.
+    fireWindowEvent: (type, event) => (windowListeners[type] || []).forEach((handler) => handler(event)),
   };
 }
 
