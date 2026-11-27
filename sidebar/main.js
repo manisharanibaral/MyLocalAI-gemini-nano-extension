@@ -8,7 +8,7 @@
  * Which of these are tried is set by config.js (window.MYLOCALAI_CONFIG),
  * so the same code ships as the Nano-only, Ollama-only and mixed editions.
  *
- * Both backends run 100% on-device. Zero cloud.
+ * Nano runs on-device; Ollama runs wherever its URL points (localhost by default).
  *
  * The files in sidebar/ are classic scripts that share one global scope; sidebar.html sets
  * their order. Only this file starts work: the others declare things (and look up elements).

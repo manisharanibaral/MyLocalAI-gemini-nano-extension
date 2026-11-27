@@ -25,6 +25,7 @@ const REQUEST_TIMEOUT_MS = 15000;
 const GENERATION_TIMEOUT_MS = 120000;
 const MAX_CHAT_MESSAGES = 100;
 const MAX_SAVED_SESSIONS = 50;
+const MAX_SAVED_PROMPTS = 5;
 // The model stays in RAM for as long as a session/loaded model exists, so release it when idle.
 // The user picks the delay in settings (minutes). 0 is the default: never unload while the
 // panel is open, matching Chrome's own behaviour (Chrome only frees it after the panel closes).

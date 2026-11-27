@@ -47,7 +47,7 @@ assert.match(functionBody(sidebarJs, "saveSettings"), /tabScreenshotMode/, "the 
   assert.match(functionBody(sidebarJs, "screenshotTabFromMenu"), /^\s*closeAttachMenu\(\);\s*const granted = await requestTabAccess\(\);/,
     "the menu screenshot must request access before awaiting anything else");
   assert.match(functionBody(sidebarJs, "allowScreenshotsFromCard"), /^\s*const granted = await requestTabAccess\(\);/, "Allow must request on its click");
-  assert.match(functionBody(sidebarJs, "onTabScreenshotModeChange"), /saveSettings\(\);[\s\S]*const granted = await requestTabAccess\(\);/,
+  assert.match(functionBody(sidebarJs, "onTabScreenshotModeChange"), /saveSetting\("tabScreenshotMode", tabScreenshotSelect\.value\);[\s\S]*const granted = await requestTabAccess\(\);/,
     "choosing an automatic mode should ask for access");
   assert.match(sidebarHtml, /id="screenshot-access-card"[\s\S]*id="btn-allow-screenshots"[\s\S]*id="btn-dismiss-screenshot-access"/, "the access card needs Allow and dismiss");
   assert.match(functionBody(sidebarJs, "clearAttachedImage"), /attachedImageIsAuto = false/, "clearing should reset the auto flag");

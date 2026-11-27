@@ -13,6 +13,9 @@ let isGenerating = false;
 let chatHistory = [];        // Messages for the current session
 let chatSessions = [];       // Array of all saved sessions
 let savedPromptList = [];    // Array of saved system prompts
+// The system prompt in effect: the text box as of the last Apply. Every backend reads this, so
+// an edit (or a picked saved prompt) changes nothing until Apply & Restart.
+let appliedSystemPrompt = "";
 let currentSessionId = Date.now().toString();
 let activeBackend = null;    // "nano" | "ollama" | externalProvider.id | null
 let currentContextText = ""; // Context from selected text

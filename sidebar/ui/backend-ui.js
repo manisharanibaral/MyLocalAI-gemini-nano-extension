@@ -47,11 +47,16 @@ function updateBackendUI() {
     headerBadge.textContent = `Ollama · ${model}${statusText}`;
     headerBadge.style.color = isOllamaModelValid ? "" : "#F87171";
 
-    const isCloud = model.includes(":cloud") || model.includes("-cloud");
-    backendHint.textContent = isCloud ? `Ollama (${model}) · cloud` : `Ollama (${model}) · 100% local`;
-    welcomeSub.textContent = isCloud
-      ? `Powered by Ollama (${model}) — routed through Ollama cloud. Fast.`
-      : `Powered by Ollama (${model}) — running locally on your machine. Private. Fast.`;
+    if (isOllamaCloudModel(model)) {
+      backendHint.textContent = `Ollama (${model}) · cloud`;
+      welcomeSub.textContent = `Powered by Ollama (${model}) — routed through Ollama cloud. Fast.`;
+    } else if (isLocalOllamaUrl(getOllamaUrl())) {
+      backendHint.textContent = `Ollama (${model}) · 100% local`;
+      welcomeSub.textContent = `Powered by Ollama (${model}) — running locally on your machine. Private. Fast.`;
+    } else {
+      backendHint.textContent = `Ollama (${model}) · on ${ollamaHost()}`;
+      welcomeSub.textContent = `Powered by Ollama (${model}) on ${ollamaHost()} — your messages go to that computer.`;
+    }
 
     setAttachAvailable(modelSupportsVision);
   } else if (isProviderActive()) {
@@ -68,4 +73,13 @@ function updateBackendUI() {
     setAttachAvailable(false);
   }
   refreshModelPill();
+}
+
+// True only when no message, page text or screenshot leaves this computer with the active
+// backend, so the UI never promises privacy it doesn't have.
+function answersStayOnDevice() {
+  if (activeBackend === "nano") return true;
+  if (activeBackend === "ollama") return isLocalOllamaUrl(getOllamaUrl()) && !isOllamaCloudModel(getOllamaModel());
+  if (isProviderActive()) return externalProvider.describe().usesCloud === false;
+  return false;
 }

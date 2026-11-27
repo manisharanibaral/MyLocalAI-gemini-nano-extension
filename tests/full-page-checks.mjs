@@ -148,7 +148,7 @@ async function assertFailsAndRestores({ onCapture, signal, expected, message }) 
   // Ollama: all images of a message go into its images array.
   let body;
   const sandbox = loadFunctions(["ollamaPromptStreaming"], {
-    getOllamaUrl: () => "http://x", getOllamaModel: () => "m", sysPromptEl: { value: "sys" }, DEFAULT_SYSTEM_PROMPT: "",
+    getOllamaUrl: () => "http://x", getOllamaModel: () => "m", getSystemPrompt: () => "sys",
     chatHistory: [{ role: "user", content: "old", images: ["A"] }, { role: "assistant", content: "a" },
       { role: "user", content: "has __IMG__ typed" }, { role: "user", content: "page", images: ["B", "C"] }],
     MAX_CHAT_MESSAGES: 100, tempSlider: { value: "1" }, topkSlider: { value: "3" }, modelSupportsThinking: false,

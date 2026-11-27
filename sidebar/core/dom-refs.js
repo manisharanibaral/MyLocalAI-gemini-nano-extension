@@ -32,6 +32,7 @@ const topkValue = $("#topk-value");
 const btnApply = $("#btn-apply-settings");
 const btnReset = $("#btn-reset-all");
 const btnSavePrompt = $("#btn-save-prompt");
+const btnDeletePrompt = $("#btn-delete-prompt");
 const savedPromptsDropdown = $("#saved-prompts");
 const btnHistory = $("#btn-history");
 const historyPanel = $("#history-panel");

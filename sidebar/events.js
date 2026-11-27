@@ -153,7 +153,7 @@ function setupEventListeners() {
       // If /api/show failed, use name-based heuristics
       // Cloud models may not be pulled yet but will auto-pull on use
       if (!showOk) {
-        const isCloudModel = model.includes(":cloud") || model.includes("-cloud");
+        const isCloudModel = isOllamaCloudModel(model);
         if (!isCloudModel) {
           modelStatusSpan.textContent = " ✗ Not found";
           modelStatusSpan.style.color = "#F87171";
@@ -197,7 +197,7 @@ function setupEventListeners() {
   tempSlider.addEventListener("input", () => { tempValue.textContent = tempSlider.value; });
   topkSlider.addEventListener("input", () => { topkValue.textContent = topkSlider.value; });
   // Read at send time, so it takes effect without "Apply & Restart".
-  responseCountInputs.forEach(input => input.addEventListener("change", saveSettings));
+  responseCountInputs.forEach(input => input.addEventListener("change", saveResponseCountSetting));
   tabScreenshotSelect.addEventListener("change", onTabScreenshotModeChange);
   btnAllowScreenshots.addEventListener("click", allowScreenshotsFromCard);
   btnDismissScreenshotAccess.addEventListener("click", dismissScreenshotAccessCard);
@@ -222,8 +222,8 @@ function setupEventListeners() {
       return;
     }
 
-    if (savedPromptList.length >= 5) {
-      alert("You can only save up to 5 prompts. Please delete one first (or Reset All Data).");
+    if (savedPromptList.length >= MAX_SAVED_PROMPTS) {
+      alert(`You can save up to ${MAX_SAVED_PROMPTS} prompts. Pick one in the list and press its delete button first.`);
       return;
     }
 
@@ -231,20 +231,16 @@ function setupEventListeners() {
     if (!name || !name.trim()) return;
 
     savedPromptList.push({ name: name.trim(), content });
-    try {
-      localStorage.setItem("savedPromptList", JSON.stringify(savedPromptList));
-    } catch (e) {
-      console.warn("Could not save prompt list", e);
-    }
+    storeSavedPrompts();
     renderSavedPrompts();
     savedPromptsDropdown.value = content;
   });
+  btnDeletePrompt.addEventListener("click", deleteSelectedPrompt);
 
+  // Picking a prompt fills the box, like typing would; Apply & Restart puts it into effect for
+  // every backend (Gemini Nano can only take a new system prompt in a new session).
   savedPromptsDropdown.addEventListener("change", (e) => {
-    if (e.target.value) {
-      sysPromptEl.value = e.target.value;
-      saveSettings();
-    }
+    if (e.target.value) sysPromptEl.value = e.target.value;
   });
 
   btnReset.addEventListener("click", () => {

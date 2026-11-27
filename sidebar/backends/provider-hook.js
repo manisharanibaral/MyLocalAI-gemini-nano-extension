@@ -11,7 +11,7 @@ function isProviderActive() {
 
 function providerRequestSettings() {
   return {
-    systemPrompt: sysPromptEl.value.trim() || DEFAULT_SYSTEM_PROMPT,
+    systemPrompt: getSystemPrompt(),
     temperature: parseFloat(tempSlider.value),
     topK: parseInt(topkSlider.value, 10),
   };

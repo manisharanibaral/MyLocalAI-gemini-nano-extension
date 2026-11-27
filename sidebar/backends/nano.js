@@ -75,7 +75,7 @@ async function initNanoSession() {
   let isCreating = true;
   // Current Prompt API: system prompt goes in initialPrompts (systemPrompt was removed).
   // Extensions must pass temperature and topK together, or neither.
-  const systemText = sysPromptEl.value.trim() || DEFAULT_SYSTEM_PROMPT;
+  const systemText = getSystemPrompt();
   const options = {
     initialPrompts: [{ role: "system", content: systemText }],
     temperature: parseFloat(tempSlider.value),

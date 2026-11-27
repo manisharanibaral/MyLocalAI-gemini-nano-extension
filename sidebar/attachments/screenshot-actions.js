@@ -24,7 +24,7 @@ async function allowScreenshotsFromCard() {
 // Picking an automatic mode is a click, so it can ask for site access right away and
 // show the screenshot immediately; it also undoes an earlier "Not now" on the card.
 async function onTabScreenshotModeChange() {
-  saveSettings();
+  saveSetting("tabScreenshotMode", tabScreenshotSelect.value);
   if (getTabScreenshotMode() === "manual") {
     hideScreenshotAccessCard();
     if (attachedImageIsAuto) clearAttachedImage();
@@ -50,7 +50,7 @@ async function screenshotTabFromMenu() {
   closeAttachMenu();
   const granted = await requestTabAccess(); // first call, so it still has the click's gesture
   if (!granted) {
-    alert(TAB_ACCESS_NEEDED_MESSAGE);
+    alert(tabAccessNeededMessage());
     return;
   }
   if (pageCapture) clearAttachedImage();
@@ -66,14 +66,20 @@ async function screenshotTabFromMenu() {
 }
 
 // ----- "Screenshot whole page" (full-page-capture.js takes the pictures) -----
-const TAB_ACCESS_NEEDED_MESSAGE = "MyLocalAI needs permission to see the page to take a screenshot. Nothing leaves your device.";
+// Promises privacy only when the active backend keeps everything on this computer.
+function tabAccessNeededMessage() {
+  const base = "MyLocalAI needs permission to see the page to take a screenshot.";
+  return answersStayOnDevice()
+    ? `${base} The screenshot stays on your device.`
+    : `${base} A screenshot you send goes to the model, which runs off this device.`;
+}
 const PROTECTED_PAGE_MESSAGE = "Chrome doesn't allow screenshots of this page (browser pages like the New Tab or Web Store are protected).";
 
 async function screenshotFullPageFromMenu() {
   closeAttachMenu();
   const granted = await requestTabAccess(); // first call, so it still has the click's gesture
   if (!granted) {
-    alert(TAB_ACCESS_NEEDED_MESSAGE);
+    alert(tabAccessNeededMessage());
     return;
   }
   clearAttachedImage(); // also cancels an earlier capture

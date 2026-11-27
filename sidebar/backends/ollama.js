@@ -2,6 +2,25 @@
 "use strict";
 
 // ===================== OLLAMA BACKEND =====================
+// Ollama's cloud models run on ollama.com, so messages to them leave the computer.
+function isOllamaCloudModel(model) {
+  return model.includes(":cloud") || model.includes("-cloud");
+}
+
+// The URL can point at another computer; only this one's loopback addresses are "local".
+function isLocalOllamaUrl(url) {
+  try {
+    const host = new URL(url).hostname;
+    return host === "localhost" || host.endsWith(".localhost") || host === "127.0.0.1" || host === "[::1]";
+  } catch (_) {
+    return false;
+  }
+}
+
+function ollamaHost() {
+  try { return new URL(getOllamaUrl()).host; } catch (_) { return getOllamaUrl(); }
+}
+
 async function initOllamaSession() {
   const baseUrl = getOllamaUrl();
   const model = getOllamaModel();
@@ -27,7 +46,7 @@ async function initOllamaSession() {
 
   // Check if the requested model exists in local tags
   const modelExistsLocally = models.some((m) => m === model || m.startsWith(model.split(":")[0]));
-  const isCloudModel = model.includes(":cloud") || model.includes("-cloud");
+  const isCloudModel = isOllamaCloudModel(model);
 
   // Session is just "connection verified" for Ollama
   session = null; // no persistent session object for Ollama
@@ -100,7 +119,7 @@ async function initOllamaSession() {
 async function ollamaPromptStreaming(text, signal) {
   const baseUrl = getOllamaUrl();
   const model = getOllamaModel();
-  const systemPrompt = sysPromptEl.value.trim() || DEFAULT_SYSTEM_PROMPT;
+  const systemPrompt = getSystemPrompt();
 
   // Build messages array for multi-turn conversation. sendMessage() already
   // stores the current user message before streaming, so chatHistory is the

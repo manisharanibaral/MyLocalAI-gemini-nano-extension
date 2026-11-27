@@ -61,8 +61,8 @@ function fakeDocument() {
   };
 }
 
-function fakeStorage() {
-  const items = new Map();
+function fakeStorage(initial = {}) {
+  const items = new Map(Object.entries(initial));
   return {
     getItem: (key) => items.get(key) ?? null,
     setItem: (key, value) => items.set(key, String(value)),
@@ -73,14 +73,15 @@ function fakeStorage() {
 
 // Runs sidebar.html's scripts one by one in a shared global scope, as the browser does.
 // Vendor libraries are left out: the panel falls back to plain text without them.
-export function bootPanel({ globals = {} } = {}) {
+// storage: localStorage items already saved before the panel opens (e.g. settings).
+export function bootPanel({ globals = {}, storage = {} } = {}) {
   const document = fakeDocument();
   const windowListeners = {};
   const context = vm.createContext({
     addEventListener: (type, handler) => (windowListeners[type] ||= []).push(handler),
     console: { log() { }, info() { }, warn() { }, error: console.error },
     document,
-    localStorage: fakeStorage(),
+    localStorage: fakeStorage(storage),
     navigator: { userAgent: "Chrome/140", language: "en" },
     chrome: {
       runtime: { id: "test", sendMessage: (_message, reply) => reply({}), onMessage: { addListener() { } } },

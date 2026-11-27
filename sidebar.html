@@ -122,6 +122,14 @@
                   <polyline points="7 3 7 8 15 8"></polyline>
                 </svg>
               </button>
+              <button id="btn-delete-prompt" class="icon-btn icon-btn-sm" title="Delete the selected saved prompt"
+                aria-label="Delete the selected saved prompt">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                  stroke-linejoin="round">
+                  <polyline points="3 6 5 6 21 6"></polyline>
+                  <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                </svg>
+              </button>
             </div>
             <div class="select-wrap">
               <select id="saved-prompts" class="settings-input">
@@ -133,7 +141,7 @@
             </div>
           </div>
           <div class="settings-group">
-            <label class="settings-label" for="sys-prompt">System prompt</label>
+            <label class="settings-label" for="sys-prompt">System prompt <span class="settings-hint">· used after Apply &amp; Restart</span></label>
             <textarea id="sys-prompt" class="settings-textarea" rows="3"
               placeholder="e.g. You are a concise coding assistant…"></textarea>
           </div>

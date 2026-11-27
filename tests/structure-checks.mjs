@@ -101,5 +101,6 @@ function ndjsonStream(frames) {
 // ===================== BEHAVIOUR, BY TOPIC =====================
 await import("./panel/chat-saving.mjs");
 await import("./panel/ollama.mjs");
+await import("./panel/settings.mjs");
 
 console.log("Structure checks passed");

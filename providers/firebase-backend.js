@@ -417,6 +417,8 @@
         ? `Powered by Firebase AI Logic. Answers run on-device with Gemini Nano when possible; otherwise your messages go to Google's ${cloud}.`
         : "Powered by Firebase AI Logic with Gemini Nano, on your device. Cloud fallback is off.",
       title: "MyLocalAI — Firebase Hybrid",
+      // Lets the sidebar say "stays on your device" only when that is true.
+      usesCloud: route.usesCloud,
     };
   }
 

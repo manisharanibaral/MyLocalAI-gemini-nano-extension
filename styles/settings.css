@@ -76,6 +76,10 @@
   align-items: center;
   gap: 8px;
 }
+/* Several buttons after a label (save + delete prompt) stay together at the right. */
+.settings-label-row > .settings-label { margin-right: auto; }
+/* A quiet note inside a label, e.g. when a setting takes effect. */
+.settings-hint { font-weight: 400; color: var(--text-muted); }
 
 .icon-btn-sm {
   width: 24px; height: 24px;
