@@ -4,8 +4,9 @@
 // Nano remembers a conversation only inside its session. A reopened chat, or the same chat
 // after the model was reloaded, starts in a new session, so the chat's recent turns are
 // added back with append(). Images are left out: they take far more context than text.
+// reserveTokens keeps room for a prompt about to be sent (see makeRoomInNano).
 // Returns { kept, total } messages so the caller can tell the user what Nano still knows.
-async function restoreNanoContext(history) {
+async function restoreNanoContext(history, reserveTokens = 0) {
   const turns = history
     .filter(m => m.role === "user" || m.role === "assistant")
     .map(m => ({ role: m.role, content: messageText(m) }))
@@ -13,7 +14,7 @@ async function restoreNanoContext(history) {
   if (turns.length === 0 || !session) return { kept: 0, total: 0 };
   if (typeof session.append !== "function") return { kept: 0, total: turns.length };
 
-  const kept = newestTurnsWithin(turns, nanoReplayBudgetChars());
+  const kept = newestTurnsWithin(turns, nanoReplayBudgetChars(reserveTokens));
   if (kept.length === 0) return { kept: 0, total: turns.length };
   try {
     await session.append(kept);
@@ -25,12 +26,14 @@ async function restoreNanoContext(history) {
   }
 }
 
-// About half of the free context, at ~4 characters per token, so the next messages still fit.
-function nanoReplayBudgetChars() {
-  return Math.max(0, nanoWindow() - nanoUsed()) * 2;
+// About half of the free context (after reserveTokens), at ~4 characters per token, so the
+// next messages still fit.
+function nanoReplayBudgetChars(reserveTokens = 0) {
+  return Math.max(0, nanoWindow() - nanoUsed() - reserveTokens) * 2;
 }
 
 // Keeps the newest turns whose text fits in budgetChars; older turns are dropped first.
+// Also used for Ollama's history (ollama-request.js).
 function newestTurnsWithin(turns, budgetChars) {
   const kept = [];
   let used = 0;

@@ -28,22 +28,7 @@ async function send(panel, text) {
   assert.deepEqual(chats.map((c) => c.history[0].content).sort(), ["first chat", "second chat"]);
 }
 
-// ===================== NANO "CONTEXT LIMIT REACHED" KEEPS THE OLD CHAT =====================
-{
-  const nano = fakeNano({ answer: ["ok"] });
-  const panel = bootPanel({ globals: { LanguageModel: nano.LanguageModel } });
-  await until(() => panel.evaluate("activeBackend") === "nano", "the Nano backend");
-  await send(panel, "short question");
-  nano.promptTokens = 10_000; // the next prompt does not fit
-  await send(panel, "huge question");
-  nano.promptTokens = 1;
-  await send(panel, "after the reset");
-
-  const chats = savedChats(panel);
-  assert.equal(chats.length, 2, "the full context starts a new chat; the earlier one stays in History");
-  const old = chats.find((c) => c.history[0].content === "short question");
-  assert.deepEqual(savedTexts(old), ["user: short question", "assistant: ok"], "the old chat is untouched");
-}
+// A full Nano context now stays in the same chat: see tests/panel/context-budget.mjs.
 
 // ===================== A STOPPED REPLY IS SAVED =====================
 {

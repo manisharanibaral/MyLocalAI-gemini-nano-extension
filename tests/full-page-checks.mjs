@@ -145,21 +145,26 @@ async function assertFailsAndRestores({ onCapture, signal, expected, message }) 
   assert.equal(prompted, "hi", "a message without images stays a plain string");
 }
 {
-  // Ollama: all images of a message go into its images array.
+  // Ollama: the newest message sends all its images; older ones send a note in their place,
+  // so a full-page screenshot is not uploaded again on every later turn.
   let body;
-  const sandbox = loadFunctions(["ollamaPromptStreaming"], {
+  const sandbox = loadFunctions(["ollamaPromptStreaming", "ollamaRequestBody", "ollamaChatMessages", "ollamaTextMessage",
+    "ollamaLatestMessage", "earlierImagesNote", "ollamaHistoryBudgetChars", "ollamaThinkingEnabled", "newestTurnsWithin", "messageText"], {
     getOllamaUrl: () => "http://x", getOllamaModel: () => "m", getSystemPrompt: () => "sys",
     chatHistory: [{ role: "user", content: "old", images: ["A"] }, { role: "assistant", content: "a" },
       { role: "user", content: "has __IMG__ typed" }, { role: "user", content: "page", images: ["B", "C"] }],
-    MAX_CHAT_MESSAGES: 100, tempSlider: { value: "1" }, topkSlider: { value: "3" }, modelSupportsThinking: false,
+    tempSlider: { value: "1" }, topkSlider: { value: "3" }, modelSupportsThinking: false, ollamaThinkingSelect: { value: "off" },
+    OLLAMA_CONTEXT_TOKENS: 8192, OLLAMA_REPLY_RESERVE_TOKENS: 2048, OLLAMA_TOKENS_PER_IMAGE: 600, CHARS_PER_TOKEN: 3,
     GENERATION_TIMEOUT_MS: 1, getAnswerTokenCap: () => null,
     fetchWithTimeout: async (url, options) => { body = JSON.parse(options.body); return { ok: true, body: { getReader() { } } }; },
   });
   await sandbox.ollamaPromptStreaming("page", null);
   assert.deepEqual(body.messages.slice(1).map((m) => [m.content, m.images]),
-    [["old", ["A"]], ["a", undefined], ["has __IMG__ typed", undefined], ["page", ["B", "C"]]],
-    "typed text that looks like the old image marker stays text");
+    [["old\n\n(1 image was shown earlier.)", undefined], ["a", undefined], ["has __IMG__ typed", undefined], ["page", ["B", "C"]]],
+    "only the newest message carries images, and typed text that looks like the old image marker stays text");
   assert.equal("num_predict" in body.options, false, "no answer-length cap means no num_predict");
+  assert.equal(body.options.num_ctx, 8192, "the context size is set on purpose");
+  assert.equal("think" in body, false, "a model that cannot think gets no think flag");
 }
 {
   // Firebase: one inlineData part per image.

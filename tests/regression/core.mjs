@@ -27,12 +27,9 @@ assert.match(
   "setupEventListeners should return early after first registration"
 );
 
-const ollamaPromptStreaming = functionBody(sidebarJs, "ollamaPromptStreaming");
-assert.equal(
-  /\.\.\.chatHistory\.map[\s\S]*\{\s*role:\s*"user",\s*content:\s*text/.test(ollamaPromptStreaming),
-  false,
-  "ollamaPromptStreaming must not append the current user prompt after chatHistory already includes it"
-);
+// chatHistory already ends with the message being sent, so it must not be added a second time.
+assert.doesNotMatch(functionBody(sidebarJs, "ollamaChatMessages"), /content:\s*text\b/,
+  "ollamaChatMessages must not append the current user prompt after chatHistory already includes it");
 
 const initNanoSession = functionBody(sidebarJs, "initNanoSession");
 assert.match(
@@ -222,8 +219,10 @@ assert.match(
 // Every early return from sendMessageNow() runs inside sendMessage's finally, which restarts the idle timer.
 assert.match(functionBody(sidebarJs, "sendMessage"), /try \{\s*await sendMessageNow\(text\);\s*\} finally \{[\s\S]*scheduleIdleUnload\(\)/,
   "every way out of a send should restart the idle timer");
-assert.match(functionBody(sidebarJs, "nanoContextIsFull"), /await startNewChat\(\)/,
-  "a full Nano context continues as a new chat, so the old one is not overwritten");
+assert.doesNotMatch(functionBody(sidebarJs, "makeRoomInNano"), /startNewChat\(\)/,
+  "a full Nano context is trimmed in the same chat, not continued as a new one");
+assert.match(functionBody(sidebarJs, "makeRoomInNano"), /resetNanoChat\(\)[\s\S]*restoreNanoContext\(chatHistory, promptTokens\)/,
+  "a full Nano context gets a fresh session with the newest turns that leave room for the prompt");
 assert.match(functionBody(sidebarJs, "destroyNanoSessions"), /nanoBaseSession/, "destroyNanoSessions must also destroy the base session");
 assert.match(functionBody(sidebarJs, "destroySession"), /destroyNanoSessions\(\)/, "idle unload/restart should release the base session too");
 assert.match(functionBody(sidebarJs, "watchNanoContextOverflow"), /"contextoverflow"/, "Nano context overflow should be surfaced");

@@ -3,7 +3,6 @@
 import assert from "node:assert/strict";
 import { functionBody, sidebarCss, sidebarHtml, sidebarJs } from "../helpers/sources.mjs";
 
-const ollamaPromptStreaming = functionBody(sidebarJs, "ollamaPromptStreaming");
 const streamNano = functionBody(sidebarJs, "streamNano");
 
 // ===== Responses at once (1–5 parallel answers) =====
@@ -54,7 +53,8 @@ assert.match(functionBody(sidebarJs, "resetNanoChat"), /releaseNanoVariantSessio
   assert.match(bind, /entry\.content = variant\.content/, "switching answers should change what history keeps");
   assert.match(bind, /chatHistory\[chatHistory\.length - 1\][\s\S]*adoptNanoVariant/, "only the latest reply may switch Nano's session");
 }
-assert.match(ollamaPromptStreaming, /const \{ variants, selected, \.\.\.message \} = m;/, "unused answers must not be sent to Ollama");
+assert.match(functionBody(sidebarJs, "ollamaTextMessage"), /return \{ role: message\.role, content:/,
+  "only role and the selected answer's content go to Ollama, never the unused variants");
 assert.match(functionBody(sidebarJs, "loadConversation"), /variants\?\.length > 1[\s\S]*appendSavedResponseGroup/, "saved multi-answer replies should restore with tabs");
 {
   const group = functionBody(sidebarJs, "appendResponseGroup");

@@ -232,15 +232,8 @@
             <input id="ollama-url" type="text" class="settings-input" />
           </div>
           <div class="settings-group">
-            <label class="settings-label" for="ollama-thinking">Thinking</label>
-            <div class="select-wrap">
-              <select id="ollama-thinking" class="settings-input">
-                <option value="off" selected>Off (default)</option>
-                <option value="on">On</option>
-              </select>
-              <svg class="select-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
-            </div>
-            <p class="settings-hint">For models that can reason first (DeepSeek-R1, QwQ, Gemma 4). Slower, but better on hard questions. Used from the next message.</p>
+            <label class="settings-label" for="ollama-thinking">Thinking <span class="settings-hint">· slower, better on hard questions; from the next message</span></label>
+            <div class="select-wrap"><select id="ollama-thinking" class="settings-input"><option value="off" selected>Off (default)</option><option value="on">On, for models that can reason first</option></select><svg class="select-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg></div>
           </div>
         </section>
 
@@ -467,7 +460,6 @@
       <button id="btn-viewer-next" class="btn-viewer" type="button">Next ›</button>
     </div>
   </dialog>
-
   <script src="vendor/purify.min.js"></script>
   <script src="vendor/marked.umd.js"></script>
   <script src="config.js"></script>
@@ -505,5 +497,4 @@
   <script src="sidebar/events.js"></script>
   <script src="sidebar/main.js"></script>
 </body>
-
 </html>

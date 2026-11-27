@@ -53,15 +53,19 @@ function ndjsonStream(frames, { waitForStop } = {}) {
 
 // options.answer: the content frames /api/chat streams. waitForStop: keep the body open.
 // models: what /api/tags lists. knowsModel: false makes /api/show fail, as for an unknown model.
-export function fakeOllama({ answer = ["Hello ", "there"], waitForStop = false, models = ["gemma4:e4b"], knowsModel = true } = {}) {
+// capabilities: what /api/show reports (e.g. ["thinking"]). usage: { input, output } token
+// counts for the closing done frame, as real Ollama sends them.
+export function fakeOllama({ answer = ["Hello ", "there"], waitForStop = false, models = ["gemma4:e4b"], knowsModel = true,
+  capabilities = [], usage = null } = {}) {
   const ollama = { chatBodies: [], connects: 0, fetch: null }; // connects: /api/tags calls (one per init)
   ollama.fetch = async (url, options = {}) => {
     if (url.endsWith("/api/chat")) {
       ollama.chatBodies.push(JSON.parse(options.body));
       const frames = answer.map((content) => ({ message: { content } }));
+      if (usage) frames.push({ done: true, prompt_eval_count: usage.input, eval_count: usage.output });
       return { ok: true, body: ndjsonStream(frames, { waitForStop }) };
     }
-    if (url.endsWith("/api/show")) return { ok: knowsModel, json: async () => ({ capabilities: [] }) };
+    if (url.endsWith("/api/show")) return { ok: knowsModel, json: async () => ({ capabilities }) };
     ollama.connects += 1;
     return { ok: true, json: async () => ({ models: models.map((name) => ({ name })) }) };
   };

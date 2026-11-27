@@ -63,8 +63,10 @@ function withinOneSecond(promise, what) {
   panel.evaluate("loadSessions()");
   panel.evaluate('loadConversation("legacy")');
   await panel.evaluate('sendMessage("and now?")');
+  assert.deepEqual(JSON.parse(panel.evaluate("JSON.stringify(chatHistory[0])")), { role: "user", content: "look", images: ["QUFB"] },
+    "the old image is read back as an image");
   const [first] = ollama.chatBodies[0].messages.slice(1);
-  assert.deepEqual([first.content, first.images], ["look", ["QUFB"]], "the old image is sent as an image again");
+  assert.equal(first.content, "look\n\n(1 image was shown earlier.)", "as an earlier image, it is noted rather than sent again");
 }
 
 // ===================== UNKNOWN MODEL IS FLAGGED =====================

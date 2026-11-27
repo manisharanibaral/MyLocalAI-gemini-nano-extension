@@ -66,7 +66,8 @@ const lastUserMessage = (ollama) => lastBody(ollama).messages.at(-1).content;
   assert.equal(lastBody(ollama).options.num_predict, 1500, "an unknown saved value falls back to Normal");
 }
 {
-  const { ollama, panel } = await ollamaPanel({ storage: { answerLength: "short" } });
+  // Thinking is off by default, so the test turns it on (see tests/panel/context-budget.mjs).
+  const { ollama, panel } = await ollamaPanel({ storage: { answerLength: "short", ollamaThinking: "on" } });
   panel.evaluate("modelSupportsThinking = true");
   await panel.evaluate('sendMessage("hi")');
   assert.equal(lastBody(ollama).options.num_predict, 400 + panel.evaluate("THINKING_TOKEN_ALLOWANCE"),

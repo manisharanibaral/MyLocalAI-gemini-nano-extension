@@ -152,6 +152,7 @@ function saveSettings() {
     localStorage.setItem("topk", topkSlider.value);
     localStorage.setItem("ollamaModel", ollamaModelInput.value);
     localStorage.setItem("ollamaUrl", ollamaUrlInput.value);
+    localStorage.setItem("ollamaThinking", ollamaThinkingSelect.value);
     localStorage.setItem("idleUnloadMinutes", idleUnloadSelect.value);
     localStorage.setItem("responseCount", String(getResponseCount()));
     localStorage.setItem("tabScreenshotMode", tabScreenshotSelect.value);

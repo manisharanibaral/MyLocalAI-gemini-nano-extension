@@ -57,7 +57,7 @@ async function sendMessageNow(text) {
     ? `${promptPreamble.join("\n\n")}\n\nUser Question:\n${typedPrompt}`
     : typedPrompt;
 
-  if (await nanoContextIsFull(finalPrompt, imagesToSend)) return;
+  if (await makeRoomInNano(finalPrompt, imagesToSend)) return;
 
   // Show UI
   welcomeScreen.classList.add("hidden");
@@ -108,27 +108,44 @@ async function sendMessageNow(text) {
   }
 }
 
-// Nano can't take a prompt bigger than its free context. Then the chat continues as a new
-// one (the current chat stays in History) and the user sends again. Returns true in that case.
-async function nanoContextIsFull(prompt, images) {
-  if (activeBackend !== "nano" || images.length || !session) return false;
-  if (typeof session.measureContextUsage !== "function" && typeof session.countPromptTokens !== "function") return false;
-  let promptTokens;
+// Nano can't take a prompt bigger than its free context. Then the chat stays open: Nano gets
+// a fresh session with the newest turns that still leave room for the prompt, and the message
+// is sent. Returns true only when the prompt is too big even for an empty session.
+async function makeRoomInNano(prompt, images) {
+  const promptTokens = await measureNanoPrompt(prompt, images);
+  const remaining = Math.max(0, nanoWindow() - nanoUsed());
+  if (promptTokens === null || remaining === 0 || promptTokens <= remaining) return false;
+
+  if (promptTokens > nanoEmptySessionRoom()) {
+    welcomeScreen.classList.add("hidden");
+    messagesEl.classList.remove("hidden");
+    appendMessage("ai", `⚠️ This message is too long for Gemini Nano (~${promptTokens.toLocaleString()} tokens, at most ${nanoEmptySessionRoom().toLocaleString()} fit).\n\nShorten it or the selected context.`);
+    return true;
+  }
+  await resetNanoChat();
+  const memory = await restoreNanoContext(chatHistory, promptTokens);
+  nanoContextTrimmed = memory.kept < memory.total;
+  showNanoMemoryNote(memory);
+  return false;
+}
+
+// Tokens the prompt needs, or null when Nano can't measure it (then Nano decides itself).
+// Images can't be measured as text, so prompts with images are left to Nano too.
+async function measureNanoPrompt(prompt, images) {
+  if (activeBackend !== "nano" || images.length || !session) return null;
+  if (typeof session.measureContextUsage !== "function" && typeof session.countPromptTokens !== "function") return null;
   try {
     const timeout = new Promise((_, rej) => setTimeout(() => rej(new Error("TIMEOUT")), 2000));
-    promptTokens = await Promise.race([nanoMeasure(prompt), timeout]);
+    return await Promise.race([nanoMeasure(prompt), timeout]);
   } catch (_) {
-    return false; // can't measure: let Nano decide
+    return null;
   }
-  const remaining = Math.max(0, nanoWindow() - nanoUsed());
-  if (remaining === 0 || promptTokens <= remaining) return false;
+}
 
-  await startNewChat();
-  welcomeScreen.classList.add("hidden");
-  messagesEl.classList.remove("hidden");
-  appendMessage("ai", `⚠️ Context limit reached!\n\n~${promptTokens} tokens needed, ${remaining} remain.\nStarted a new chat; the previous one is saved in History. Please re-send your message.`);
-  hideStatus();
-  return true;
+// What a new chat session has free: the window minus the system prompt in the base session.
+function nanoEmptySessionRoom() {
+  const systemTokens = nanoBaseSession?.contextUsage ?? nanoBaseSession?.tokensSoFar ?? 0;
+  return Math.max(0, nanoWindow() - systemTokens);
 }
 
 // Shows each answer's outcome and stores the reply in its chat. The chat continues from the
