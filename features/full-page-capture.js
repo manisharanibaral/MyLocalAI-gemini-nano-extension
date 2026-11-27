@@ -7,7 +7,7 @@
  *
  * sidebar/attachments/screenshot-actions.js calls window.MyLocalAIFullPage.capture(); this file
  * only talks to the page and to chrome.tabs / chrome.scripting. It needs the optional site
- * access to be granted already.
+ * access to be granted already. features/capture-indicator.js draws the glow shown meanwhile.
  */
 (() => {
   "use strict";
@@ -74,6 +74,7 @@
       for (const el of document.querySelectorAll("*")) {
         const position = getComputedStyle(el).position;
         if ((position !== "fixed" && position !== "sticky") || el.contains(state.scroller)) continue;
+        if (el.hasAttribute("data-mylocalai-overlay")) continue; // our own "capturing" glow
         if (!state.originalStyles.has(el)) state.originalStyles.set(el, el.getAttribute("style"));
         if (position === "fixed") {
           el.style.setProperty("opacity", "0", "important");
@@ -123,11 +124,16 @@
     if (active?.id !== tab.id) throw pageChangedError();
   }
 
-  async function captureParts(tab, positions, signal, onProgress) {
+  async function captureParts(tab, positions, { signal, stopSignal, onProgress }) {
+    const indicator = window.MyLocalAICaptureIndicator;
     const images = [];
     let previousTop = -1;
+    // Stopping keeps what was captured, so it waits until there is something to keep.
+    const stopRequested = () => Boolean(stopSignal?.aborted) && images.length > 0;
     for (const position of positions) {
       throwIfAborted(signal);
+      if (stopRequested()) break;
+      await indicator.show(tab.id, `Capturing… ${images.length + 1} of ${positions.length}`);
       const top = await runInPage(tab.id, scrollPageTo, [position]);
       if (top === null || top === undefined) throw pageChangedError();
       if (top <= previousTop) break; // the page won't scroll further; don't repeat an image
@@ -136,7 +142,9 @@
       onProgress?.(images.length + 1, positions.length);
       await new Promise((resolve) => setTimeout(resolve, CAPTURE_INTERVAL_MS));
       throwIfAborted(signal);
+      if (stopRequested()) break;
       await assertTabStillVisible(tab);
+      await indicator.hide(tab.id);
       const image = await chrome.tabs.captureVisibleTab(tab.windowId, { format: "jpeg", quality: 85 });
       await assertTabStillVisible(tab);
       images.push(image);
@@ -144,14 +152,16 @@
     return images;
   }
 
-  async function captureNow({ tab, signal, onProgress }) {
+  async function captureNow({ tab, signal, stopSignal, onProgress }) {
     throwIfAborted(signal);
     const { pageHeight, viewHeight } = await runInPage(tab.id, startPageCapture);
     try {
       const { positions, totalParts } = planScrollPositions(pageHeight, viewHeight);
-      const images = await captureParts(tab, positions, signal, onProgress);
-      return { images, totalParts };
+      const images = await captureParts(tab, positions, { signal, stopSignal, onProgress });
+      const stopped = Boolean(stopSignal?.aborted) && images.length < positions.length;
+      return { images, totalParts, stopped };
     } finally {
+      await window.MyLocalAICaptureIndicator.remove(tab.id);
       // The tab may be closed by now; there is nothing left to restore then.
       await runInPage(tab.id, restorePage).catch(() => { });
     }
@@ -161,12 +171,18 @@
   // or its cleanup would undo the new capture's changes.
   let previousCapture = Promise.resolve();
 
-  /** Resolves to { images: [JPEG data URL, top to bottom], totalParts }. */
+  /**
+   * Resolves to { images: [JPEG data URL, top to bottom], totalParts, stopped }.
+   * Aborting `signal` cancels and rejects; aborting `stopSignal` keeps what is captured so far.
+   */
   function capture(options) {
     const run = previousCapture.then(() => captureNow(options));
     previousCapture = run.catch(() => { });
     return run;
   }
 
-  window.MyLocalAIFullPage = { capture, planScrollPositions, MAX_PAGE_PARTS };
+  // Settles once no capture is touching the page, including a cancelled one still cleaning up.
+  const whenIdle = () => previousCapture;
+
+  window.MyLocalAIFullPage = { capture, whenIdle, planScrollPositions, MAX_PAGE_PARTS };
 })();

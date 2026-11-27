@@ -5,80 +5,10 @@
 import assert from "node:assert/strict";
 import vm from "node:vm";
 import { SHARED_FILES } from "../scripts/build.mjs";
+import { createBrowser, FakeElement, loadFunctions, plain, scrollingRoot } from "./helpers/fake-page.mjs";
 import { functionSource, read, scriptPaths, sidebarHtml, sidebarJs, sidebarPaths } from "./helpers/sources.mjs";
-
-const captureJs = read("features/full-page-capture.js");
-// Values built inside a vm belong to another realm; copy them before deepEqual.
-const plain = (value) => JSON.parse(JSON.stringify(value));
-
-// ===================== FAKE PAGE =====================
-class FakeStyle {
-  constructor(element) { this.element = element; }
-  setProperty(name, value, priority) {
-    const previous = this.element.attrs.style ?? "";
-    this.element.attrs.style = `${previous}${name}: ${value}${priority ? ` !${priority}` : ""};`;
-  }
-}
-
-class FakeElement {
-  constructor({ position = "static", overflowY = "visible", clientHeight = 0, clientWidth = 1000, scrollHeight = clientHeight, children = [], style } = {}) {
-    Object.assign(this, { clientHeight, clientWidth, scrollHeight, children });
-    this.computed = { position, overflowY };
-    this.attrs = style === undefined ? {} : { style };
-    this.style = new FakeStyle(this);
-    this.top = 0;
-    this.maxTop = Math.max(0, scrollHeight - clientHeight);
-  }
-  get scrollTop() { return this.top; }
-  set scrollTop(value) { this.top = Math.min(this.maxTop, Math.max(0, value)); } // browsers clamp
-  contains(node) { return node === this || this.children.some((child) => child.contains(node)); }
-  getAttribute(name) { return this.attrs[name] ?? null; }
-  setAttribute(name, value) { this.attrs[name] = value; }
-  removeAttribute(name) { delete this.attrs[name]; }
-}
-
-// A tab: the injected functions are re-created from their source in the page's own realm,
-// exactly like chrome.scripting does, so they fail here if they depend on the module.
-function createBrowser({ viewHeight = 800, root, elements = [], onCapture } = {}) {
-  const page = vm.createContext({
-    window: { innerHeight: viewHeight },
-    document: { scrollingElement: root, querySelectorAll: () => [root, ...elements] },
-    getComputedStyle: (el) => el.computed,
-    setTimeout: (done) => setImmediate(done),
-  });
-  const browser = { page, root, activeTabId: 7, captures: [], log: [] };
-  const chrome = {
-    scripting: {
-      async executeScript({ target, func, args }) {
-        assert.equal(target.tabId, 7, "scripts go into the captured tab");
-        browser.log.push(func.name);
-        const result = await vm.runInContext(`(${func})(...${JSON.stringify(args)})`, page);
-        return [{ result }];
-      },
-    },
-    tabs: {
-      async query() { return [{ id: browser.activeTabId }]; },
-      async captureVisibleTab(windowId) {
-        assert.equal(windowId, 3, "the panel's window is captured");
-        browser.captures.push(snapshot(browser, elements));
-        await onCapture?.(browser);
-        return `data:image/jpeg;base64,part${browser.captures.length}`;
-      },
-    },
-  };
-  const sandbox = vm.createContext({ window: {}, chrome, DOMException, setTimeout: (done) => setImmediate(done) });
-  vm.runInContext(captureJs, sandbox);
-  browser.api = sandbox.window.MyLocalAIFullPage;
-  browser.tab = { id: 7, windowId: 3 };
-  return browser;
-}
-
-function snapshot(browser, elements) {
-  const scroller = browser.page.window.__myLocalAiFullPage.scroller;
-  return { top: scroller.scrollTop, styles: elements.map((el) => el.getAttribute("style")) };
-}
-
-const scrollingRoot = (scrollHeight, clientHeight = 800) => new FakeElement({ clientHeight, scrollHeight });
+import "./full-page/stop-and-save.mjs";
+import "./full-page/review-images.mjs";
 
 // ===================== SCROLL PLAN =====================
 {
@@ -113,7 +43,7 @@ const scrollingRoot = (scrollHeight, clientHeight = 800) => new FakeElement({ cl
   const result = await browser.api.capture({ tab: browser.tab, onProgress: (part, count) => progress.push([part, count]) });
 
   assert.deepEqual(plain(result), {
-    images: [1, 2, 3].map((n) => `data:image/jpeg;base64,part${n}`), totalParts: 3,
+    images: [1, 2, 3].map((n) => `data:image/jpeg;base64,part${n}`), totalParts: 3, stopped: false,
   });
   assert.deepEqual(browser.captures.map((c) => c.top), [0, 740, 1200], "captured top to bottom");
   assert.deepEqual(progress, [[1, 3], [2, 3], [3, 3]]);
@@ -190,28 +120,11 @@ async function assertFailsAndRestores({ onCapture, signal, expected, message }) 
   const b = browser.api.capture({ tab: browser.tab });
   await assert.rejects(a, { name: "AbortError" });
   assert.equal((await b).images.length, 2);
-  const steps = browser.log.filter((name) => name !== "scrollPageTo");
+  const steps = browser.log.filter((name) => /PageCapture|restorePage/.test(name));
   assert.deepEqual(steps, ["startPageCapture", "restorePage", "startPageCapture", "restorePage"], "captures never overlap");
 }
 
 // ===================== SIDEBAR: SEVERAL IMAGES PER MESSAGE =====================
-function loadFunctions(names, stubs) {
-  const sandbox = vm.createContext({ console, ...stubs });
-  vm.runInContext(names.map((name) => functionSource(sidebarJs, name)).join("\n"), sandbox);
-  return sandbox;
-}
-
-{
-  const { describePageParts } = loadFunctions(["describePageParts"]);
-  assert.deepEqual(plain(describePageParts("Docs", 1, 1)), { label: "Screenshot · Docs", note: "" }, "a one-screen page is a normal screenshot");
-  const whole = describePageParts("Docs", 4, 4);
-  assert.equal(whole.label, "Whole page in 4 images · Docs");
-  assert.match(whole.note, /^The 4 attached images are consecutive screenshots of one web page, ordered from top to bottom/);
-  assert.equal(/not captured/.test(whole.note), false);
-  const cut = describePageParts("Docs", 8, 20);
-  assert.equal(cut.label, "Page too long: first 8 of 20 parts · Docs", "the user is told the page was cut off");
-  assert.match(cut.note, /not captured/, "…and so is the model");
-}
 {
   // Nano: every image becomes its own padded image part.
   let prompted;
@@ -283,8 +196,9 @@ function loadFunctions(names, stubs) {
   const sandbox = loadFunctions(["setAttachedImages", "clearAttachedImage", "updateSendButton"], {
     attachedImages: [], attachedImagesNote: "", attachedImageIsAuto: true, pageCapture: null, isGenerating: false,
     userInput: { value: "" }, btnSend: { disabled: true }, fileUpload: { value: "x" },
-    imagePreviewCard: { classList: { add() { } } }, imagePreviewThumbs: { replaceChildren() { } }, imagePreviewText: {},
+    imagePreviewCard: { classList: { add() { }, remove() { } } }, imagePreviewThumbs: { replaceChildren() { } }, imagePreviewText: {},
     showImagePreview: (urls, label) => preview.push([urls.length, label]),
+    closeImageViewer() { },
   });
   sandbox.setAttachedImages(["data:image/jpeg;base64,A", "data:image/jpeg;base64,B"], "Whole page", "note");
   assert.deepEqual([...sandbox.attachedImages], ["A", "B"]);
@@ -294,7 +208,7 @@ function loadFunctions(names, stubs) {
   assert.deepEqual(preview, [[2, "Whole page"]]);
 
   const controller = new AbortController();
-  sandbox.pageCapture = controller;
+  sandbox.pageCapture = { cancel: controller, stop: new AbortController() };
   sandbox.userInput.value = "typed";
   sandbox.updateSendButton();
   assert.equal(sandbox.btnSend.disabled, true, "no sending while a capture is still adding images");

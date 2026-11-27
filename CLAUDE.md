@@ -29,13 +29,13 @@ node scripts/build.mjs --zip         # also produce dist/mylocalai-<edition>.zip
 node tests/regression-checks.mjs     # static checks over source files (no browser)
 node tests/edition-checks.mjs        # runs the build, then asserts each dist/ edition's config + manifest
 node tests/firebase-checks.mjs       # firebase-hybrid edition: files, SHARED_FILES, manifest, opt-in cloud, prompt builder
-node tests/full-page-checks.mjs      # whole-page screenshot and multi-image messages, run against a fake page + chrome API
+node tests/full-page-checks.mjs      # whole-page screenshot, stop & save, image preview/removal; runs against a fake page + chrome API
 node tests/structure-checks.mjs      # 500-line limit, sidebar.html load list, and a boot of the panel against a fake browser
 
 cd tools/firebase-bundle && npm install && npm run build   # rebuild vendor/firebase-ai.js (only package.json lives here, never in the root)
 ```
 
-Tests are plain `node:assert` scripts, so there is no runner or single-test flag: run one file at a time. Most read source files as text through `tests/helpers/sources.mjs`, which treats the `sidebar/` scripts listed in `sidebar.html` as one source (`functionBody()` extracts a function by name), so moving a function between files is safe but renaming one can break a check. `regression-checks.mjs` only imports the topic files in `tests/regression/`.
+Tests are plain `node:assert` scripts, so there is no runner or single-test flag: run one file at a time. Most read source files as text through `tests/helpers/sources.mjs`, which treats the `sidebar/` scripts listed in `sidebar.html` as one source (`functionBody()` extracts a function by name), so moving a function between files is safe but renaming one can break a check. `regression-checks.mjs` only imports the topic files in `tests/regression/`; `full-page-checks.mjs` also imports those in `tests/full-page/` and shares `tests/helpers/fake-page.mjs` with them.
 
 **Git hook** (`.githooks/pre-commit`, enabled with `git config core.hooksPath .githooks` — run this once per clone): every commit first runs all five test scripts and is blocked if any fails. On every second commit (by total commit count) it also bumps the patch version in `manifest.json` via `scripts/bump-version.mjs` and stages it.
 
@@ -52,7 +52,9 @@ To try changes: load the repo root (the Mixed edition) or a `dist/` folder via `
 **Runtime pieces**
 - `background.js` (service worker): opens the side panel on action click, registers the right-click "Use selection as MyLocalAI context" menu, and holds the pending selection. It hands text to the panel via a `TEXT_SELECTED` message, or the panel pulls it with `GET_SELECTED_CONTEXT` on load (covers the panel not being open yet).
 - `page-watch.js` (content script): reports `PAGE_SCROLL_SETTLED` (debounced) and `PAGE_TEXT_SELECTED` to the panel. It is never in `manifest.json` (that would make site access install-time); `background.js` registers it with `chrome.scripting` only while optional `<all_urls>` access is granted, and the panel injects it into the already-open tab.
-- `features/full-page-capture.js`: "Screenshot whole page". Scrolls the tab one screen at a time and returns one image per screen (at most `MAX_PAGE_PARTS`), so text stays readable; its page functions are injected with `chrome.scripting`, so they must be self-contained. Messages hold several images as `<text>__IMG__<base64>__IMG__<base64>…`.
+- `features/full-page-capture.js`: "Screenshot whole page". Scrolls the tab one screen at a time and returns one image per screen (at most `MAX_PAGE_PARTS`), so text stays readable; its page functions are injected with `chrome.scripting`, so they must be self-contained. Aborting `signal` discards the capture; aborting `stopSignal` ("Stop & save") keeps the parts taken. Messages hold several images as `<text>__IMG__<base64>__IMG__<base64>…`.
+- `features/capture-indicator.js`: the glowing page border shown during a capture. It is hidden before every picture, skipped by the capture's pinned-element hiding (`data-mylocalai-overlay`), and removes itself if the panel goes away.
+- Pending images (`attachedImages`) can be previewed (`sidebar/attachments/image-viewer.js`) and removed one by one; `attachedPage` remembers which page parts remain so the note sent to the model stays accurate.
 - `sidebar.html` + `sidebar/` + `styles/`: the entire chat UI and both built-in backends. `sidebar/` holds classic scripts (not ES modules) that **share one global scope**: `core/` (DOM refs, config, state, settings), `backends/`, `chat/`, `ui/`, `attachments/`, `events.js`, and `main.js`.
   - The `<script>` list in `sidebar.html` is the load order: `core/` first, `main.js` last. Only `main.js` starts work; other files must not call across files at load time.
   - Top-level names must be unique across these files, and each file starts with `"use strict"`.

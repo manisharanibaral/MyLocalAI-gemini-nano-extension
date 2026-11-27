@@ -14,6 +14,7 @@
   <link rel="stylesheet" href="styles/messages.css" />
   <link rel="stylesheet" href="styles/markdown.css" />
   <link rel="stylesheet" href="styles/input-bar.css" />
+  <link rel="stylesheet" href="styles/attachments.css" />
   <link rel="stylesheet" href="styles/model-switcher.css" />
   <link rel="stylesheet" href="styles/utility.css" />
 </head>
@@ -342,7 +343,10 @@
       <div id="image-preview-card" class="context-card hidden">
         <!-- One thumbnail per attached image; sidebar/attachments/images.js fills it. -->
         <div id="image-preview-thumbs" class="img-thumbs"></div>
-        <span class="context-text img-preview-text">Attached image</span>
+        <!-- The dot and Stop button show only while a page is being captured (.capturing). -->
+        <span class="capture-dot" aria-hidden="true"></span>
+        <span class="context-text img-preview-text" aria-live="polite">Attached image</span>
+        <button id="btn-stop-capture" class="btn-card-action" type="button">Stop &amp; save</button>
         <button id="btn-clear-image" class="btn-clear-context" title="Clear image" aria-label="Clear image">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
             stroke-linejoin="round">
@@ -426,12 +430,27 @@
     </div>
   </div>
 
+  <!-- Full-size view of an attached image; sidebar/attachments/image-viewer.js drives it. -->
+  <dialog id="image-viewer" class="image-viewer" aria-labelledby="image-viewer-title">
+    <div class="image-viewer-bar">
+      <span id="image-viewer-title" class="image-viewer-title"></span>
+      <button id="btn-viewer-remove" class="btn-viewer" type="button">Remove</button>
+      <button id="btn-viewer-close" class="btn-viewer" type="button" aria-label="Close preview">✕</button>
+    </div>
+    <div class="image-viewer-stage"><img id="image-viewer-img" alt="" /></div>
+    <div id="image-viewer-nav" class="image-viewer-bar">
+      <button id="btn-viewer-prev" class="btn-viewer" type="button">‹ Previous</button>
+      <button id="btn-viewer-next" class="btn-viewer" type="button">Next ›</button>
+    </div>
+  </dialog>
+
   <script src="vendor/purify.min.js"></script>
   <script src="vendor/marked.umd.js"></script>
   <script src="config.js"></script>
   <!-- Registers optional providers; loads the Firebase SDK only when config.js enables "firebase". -->
   <script src="providers/firebase-backend.js"></script>
   <script src="features/model-switcher.js"></script>
+  <script src="features/capture-indicator.js"></script>
   <script src="features/full-page-capture.js"></script>
   <!-- One shared global scope, so order matters: core first, main.js (which starts the panel) last. -->
   <script src="sidebar/core/dom-refs.js"></script>
@@ -454,6 +473,7 @@
   <script src="sidebar/ui/status.js"></script>
   <script src="sidebar/ui/prompt-bar.js"></script>
   <script src="sidebar/attachments/images.js"></script>
+  <script src="sidebar/attachments/image-viewer.js"></script>
   <script src="sidebar/attachments/tab-screenshots.js"></script>
   <script src="sidebar/attachments/screenshot-actions.js"></script>
   <script src="sidebar/events.js"></script>

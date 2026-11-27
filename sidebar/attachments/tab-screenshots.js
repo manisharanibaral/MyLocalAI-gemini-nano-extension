@@ -63,6 +63,8 @@ function isWebsiteWorthCapturing(rawUrl) {
 }
 
 async function attachTabScreenshot(tab) {
+  // A just-cancelled page capture may still have the page scrolled and its glow on screen.
+  await window.MyLocalAIFullPage.whenIdle();
   const dataUrl = await chrome.tabs.captureVisibleTab(tab.windowId, { format: "jpeg", quality: 85 });
   const label = tab.title ? `Screenshot · ${tab.title}` : "Screenshot of this tab";
   await attachImageDataUrl(dataUrl, MAX_SCREENSHOT_SIDE, label);
@@ -82,6 +84,8 @@ async function refreshAutoScreenshot(trigger) {
   if (mode === "manual" || !canAttachImages()) return;
   // A full-page capture scrolls the page itself and owns the prompt bar until it finishes.
   if (pageCapture) return;
+  // Replacing the image would close the preview the user is looking at.
+  if (imageViewer.open) return;
   if (trigger === "tab-change" && !followsTabChanges(mode)) return;
   if (trigger === "scroll" && !hasAutoScreenshotPending()) return;
   // Never replace an image the user chose themselves.

@@ -73,6 +73,8 @@ function setupEventListeners() {
   });
 
   btnClearImage.addEventListener("click", clearAttachedImage);
+  btnStopCapture.addEventListener("click", stopPageCapture);
+  setupImageViewer();
 
   userInput.addEventListener("paste", (e) => {
     if (!canAttachImages()) return;

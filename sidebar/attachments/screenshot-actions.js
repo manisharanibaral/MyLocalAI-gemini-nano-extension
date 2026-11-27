@@ -77,15 +77,15 @@ async function screenshotFullPageFromMenu() {
     return;
   }
   clearAttachedImage(); // also cancels an earlier capture
-  const controller = new AbortController();
-  pageCapture = controller;
-  showImagePreview([], "Capturing the whole page…");
+  const run = { cancel: new AbortController(), stop: new AbortController() };
+  pageCapture = run;
+  showCaptureStatus("Capturing the whole page…");
   updateSendButton();
   try {
-    await attachFullPageScreenshot(controller.signal);
+    await attachFullPageScreenshot(run);
     userInput.focus();
   } catch (err) {
-    if (controller.signal.aborted) return; // cancelled by the user; the prompt bar already moved on
+    if (run.cancel.signal.aborted) return; // cancelled by the user; the prompt bar already moved on
     console.warn("[MyLocalAI] Full-page screenshot failed:", err);
     clearAttachedImage();
     alert(err?.code === "PAGE_CHANGED"
@@ -93,37 +93,76 @@ async function screenshotFullPageFromMenu() {
       : PROTECTED_PAGE_MESSAGE);
   } finally {
     // A newer capture may already own the prompt bar.
-    if (pageCapture === controller) pageCapture = null;
+    if (pageCapture === run) pageCapture = null;
     updateSendButton();
   }
 }
 
-async function attachFullPageScreenshot(signal) {
+// The preview card while capturing: progress text, "Stop & save", and ✕ to cancel.
+function showCaptureStatus(text) {
+  showImagePreview([], text);
+  imagePreviewCard.classList.add("capturing");
+  btnClearImage.title = "Cancel capture";
+  btnStopCapture.disabled = Boolean(pageCapture?.stop.signal.aborted);
+}
+
+// "Stop & save": ends the capture early and attaches the parts taken so far.
+function stopPageCapture() {
+  if (!pageCapture) return;
+  pageCapture.stop.abort();
+  showCaptureStatus("Stopping… saving captured parts");
+}
+
+async function attachFullPageScreenshot({ cancel, stop }) {
   const tab = await getActiveTab();
   if (!tab) throw new Error("No active tab");
-  const { images, totalParts } = await window.MyLocalAIFullPage.capture({
+  const { images, totalParts, stopped } = await window.MyLocalAIFullPage.capture({
     tab,
-    signal,
+    signal: cancel.signal,
+    stopSignal: stop.signal,
     onProgress: (part, count) => {
-      if (!signal.aborted) showImagePreview([], `Capturing the whole page… ${part} of ${count}`);
+      // After "Stop & save" the card keeps saying it is stopping.
+      if (!cancel.signal.aborted && !stop.signal.aborted) showCaptureStatus(`Capturing… ${part} of ${count}`);
     },
   });
   // Each part keeps the size of a normal screenshot, which is what keeps its text readable.
   const compressed = await Promise.all(images.map(url => compressImageDataUrl(url, MAX_SCREENSHOT_SIDE)));
-  if (signal.aborted) return;
-  const { label, note } = describePageParts(tab.title || "this tab", compressed.length, totalParts);
+  if (cancel.signal.aborted) return;
+  const page = {
+    title: tab.title || "this tab",
+    parts: compressed.map((_, i) => i + 1),
+    captured: compressed.length,
+    total: totalParts,
+    stopped,
+  };
+  const { label, note } = describePageParts(page);
   setAttachedImages(compressed, label, note);
+  attachedPage = page;
 }
 
-// The label is for the user; the note tells the model that the images are one page, in order.
-function describePageParts(title, captured, total) {
-  const cutOff = captured < total;
-  if (captured === 1 && !cutOff) return { label: `Screenshot · ${title}`, note: "" };
-  const label = cutOff
-    ? `Page too long: first ${captured} of ${total} parts · ${title}`
-    : `Whole page in ${captured} images · ${title}`;
-  let note = `The ${captured} attached images are consecutive screenshots of one web page, ` +
+// The label is for the user; the note tells the model which parts of the page the images are.
+function describePageParts({ title, parts, captured, total, stopped }) {
+  if (total === 1) return { label: `Screenshot · ${title}`, note: "" };
+  const count = parts.length;
+  // True while the images are an unbroken run from the top of the page.
+  const fromTop = count > 1 && parts.every((part, i) => part === i + 1);
+
+  let label;
+  if (count === total) label = `Whole page in ${count} images · ${title}`;
+  else if (count < captured) label = `${count} of ${total} page parts · ${title}`;
+  else if (stopped) label = `Stopped early: first ${count} of ${total} parts · ${title}`;
+  else label = `Page too long: first ${count} of ${total} parts · ${title}`;
+
+  if (!fromTop) {
+    const shown = count === 1 ? `image is part ${parts[0]}` : `images are parts ${parts.join(", ")}`;
+    return {
+      label,
+      note: `The attached ${shown} of ${total} screen-sized parts of one web page, numbered from ` +
+        "top to bottom. The other parts are not attached.",
+    };
+  }
+  let note = `The ${count} attached images are consecutive screenshots of one web page, ` +
     "ordered from top to bottom. Neighbouring images overlap slightly.";
-  if (cutOff) note += " The page continues below the last image, which was not captured.";
+  if (count < total) note += " The page continues below the last image, which was not captured.";
   return { label, note };
 }

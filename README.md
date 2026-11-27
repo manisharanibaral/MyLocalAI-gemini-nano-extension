@@ -172,7 +172,8 @@ Cloud models (free tier only): **Fast**: `gemini-3.5-flash-lite` (default), **Fr
 - **Ask about a webpage:** with the panel open, just drag to select text on the page: the text is attached to your next question and, when screenshots are on, a screenshot of the page (with your selection) goes in the message box too. Without site access, select text, right-click, and choose **Use selection as MyLocalAI context**.
 - **Switch models:** the pill next to the send button names the model that is answering. Click it to switch without leaving the chat. Mixed and Ollama editions list your installed Ollama models (and Gemini Nano in Mixed); the Firebase Hybrid edition offers Gemini Nano on-device or one of the cloud models (marked ☁️, because picking one sends your messages to Google). Your chat stays; only a switch *to* Gemini Nano starts with an empty model memory. The pill is hidden in the Nano edition, which has one model, and is locked while an answer is streaming.
 - **Images:** when the model supports images, a **+** button appears. It opens a menu to upload an image, take a screenshot of the current tab, or screenshot the whole page. You can also paste an image or drag one onto the input box.
-- **Screenshot whole page:** one tall picture of a long page would be shrunk until its text is unreadable, so MyLocalAI scrolls the page and attaches one image per screen, in order (up to 8; the label says when a longer page was cut off). Stay on the tab until it finishes; the ✕ cancels. Pinned headers appear only in the first image, and your scroll position is restored. Many images need more model memory: if Gemini Nano says the message is too long, start a new chat; with Ollama, a small context window can make the model ignore some images, so raise its context length.
+- **Screenshot whole page:** one tall picture of a long page would be shrunk until its text is unreadable, so MyLocalAI scrolls the page and attaches one image per screen, in order (up to 8; the label says when a longer page was cut off). While it runs, the page gets a glowing border with a *Capturing…* label (neither appears in the pictures). Stay on the tab until it finishes. **Stop & save** ends it early and keeps the images taken so far; the ✕ cancels and keeps nothing. Pinned headers appear only in the first image, and your scroll position is restored. Many images need more model memory: if Gemini Nano says the message is too long, start a new chat; with Ollama, a small context window can make the model ignore some images, so raise its context length.
+- **Review attached images:** click a thumbnail above the message box to see it full size (◀ ▶ arrow keys move between images, Esc closes). Remove one with the ✕ on its thumbnail or **Remove** in the preview; the model is told which parts of the page are still attached.
 - **Tab screenshots:** by default, when you open MyLocalAI (or start a new chat) a screenshot of the website you're on appears in the message box, ready to send. Search result pages, the New Tab page and other browser pages are skipped; remove the screenshot with its ✕. While a screenshot is waiting in the message box, scrolling the page updates it once you stop scrolling. Change this in **Settings → Add a screenshot of the page**: *Every page* updates the screenshot as you switch tabs or open pages, *Only with +* turns automatic screenshots off. Screenshots need site access ("Read and change all your data on all websites"). The first time, an **Allow** card appears above the message box; the image never leaves your device.
 - **History:** every time you open the panel it starts a new chat; the clock icon lists past chats so you can go back to one. The pencil icon starts a new chat.
 - **Settings:** the gear icon lets you change the system prompt, save up to 5 prompts, and adjust temperature and top-K. Click **Apply & Restart Session** to use the new settings.
@@ -212,7 +213,7 @@ Editions are defined in `EDITIONS` in [scripts/build.mjs](scripts/build.mjs). Th
 │   ├── attachments/           images and screenshots
 │   ├── events.js              DOM event wiring
 │   └── main.js                startup (loaded last)
-├── features/                  self-contained modules: model switcher pill, full-page capture
+├── features/                  self-contained modules: model switcher pill, full-page capture and its glow
 ├── providers/                 extra backends: firebase-backend.js (firebase-hybrid edition)
 ├── styles/                    the panel's CSS, linked in cascade order
 ├── vendor/                    third-party: DOMPurify, marked, bundled Firebase JS SDK
@@ -240,7 +241,7 @@ Run the tests:
 node tests/regression-checks.mjs
 node tests/edition-checks.mjs     # also runs the build
 node tests/firebase-checks.mjs    # firebase-hybrid edition; builds it too
-node tests/full-page-checks.mjs   # full-page screenshot and multi-image messages
+node tests/full-page-checks.mjs   # full-page screenshot, stop & save, image preview/removal, multi-image messages
 node tests/structure-checks.mjs   # file sizes, load list, and a boot of the panel against fakes
 ```
 

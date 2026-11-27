@@ -18,7 +18,12 @@ let activeBackend = null;    // "nano" | "ollama" | externalProvider.id | null
 let currentContextText = ""; // Context from selected text
 let attachedImages = [];     // Base64 JPEGs waiting to be sent (several for a full-page screenshot)
 let attachedImagesNote = ""; // tells the model how the images relate; sent along with them
-let pageCapture = null;      // AbortController while a full-page screenshot is being taken
+// While a full-page screenshot is being taken: { cancel, stop } AbortControllers.
+// cancel throws the pictures away; stop keeps the ones taken so far.
+let pageCapture = null;
+// Set while the pending images are parts of one page: { title, parts, captured, total, stopped }.
+// parts holds each image's position on the page, so the note stays true after removals.
+let attachedPage = null;
 let modelSupportsVision = false;
 let modelSupportsThinking = false;
 let isOllamaModelValid = true;

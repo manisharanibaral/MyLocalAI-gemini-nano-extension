@@ -1,0 +1,101 @@
+/* ---------- IMAGE PREVIEW CARD ---------- */
+/* Thumbnails get their own row, so many page parts never squeeze the label or buttons. */
+#image-preview-card { flex-wrap: wrap; }
+.img-preview-text { flex: 1; font-style: italic; color: var(--text-muted); }
+
+.img-thumbs {
+  order: 1;
+  flex-basis: 100%;
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+}
+.img-thumbs:empty { display: none; }
+.img-thumb { position: relative; flex-shrink: 0; }
+.img-thumb-view {
+  display: block;
+  padding: 0;
+  background: none;
+  border: 1px solid var(--border-subtle);
+  border-radius: 6px;
+  overflow: hidden;
+  cursor: zoom-in;
+}
+.img-thumb-view:hover, .img-thumb-view:focus-visible { border-color: var(--accent-from); }
+.img-thumb-view img {
+  display: block;
+  width: 52px; height: 52px;
+  object-fit: cover;
+  object-position: top;
+}
+/* Kept inside the thumbnail: the scrolling row would clip anything that sticks out. */
+.img-thumb-remove {
+  position: absolute;
+  top: 2px; right: 2px;
+  width: 18px; height: 18px;
+  border: none;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.72);
+  color: #fff;
+  font-size: 10px;
+  line-height: 18px;
+  cursor: pointer;
+}
+.img-thumb-remove:hover, .img-thumb-remove:focus-visible { background: hsl(0, 72%, 50%); }
+
+/* ---------- CAPTURING STATE ---------- */
+.capture-dot, #btn-stop-capture { display: none; }
+#image-preview-card.capturing {
+  border-color: var(--accent-from);
+  animation: capture-glow 1.1s ease-in-out infinite alternate;
+}
+.capturing .capture-dot {
+  display: block;
+  width: 8px; height: 8px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  background: var(--accent-to);
+  animation: capture-blink 0.8s ease-in-out infinite alternate;
+}
+.capturing #btn-stop-capture { display: block; }
+#btn-stop-capture:disabled { opacity: 0.5; cursor: default; }
+@keyframes capture-glow {
+  from { box-shadow: 0 0 2px rgba(139, 92, 246, 0.3); }
+  to { box-shadow: 0 0 12px rgba(139, 92, 246, 0.75); }
+}
+@keyframes capture-blink { from { opacity: 0.3; } to { opacity: 1; } }
+
+/* ---------- IMAGE VIEWER ---------- */
+.image-viewer {
+  width: 100%; height: 100%;
+  max-width: 100%; max-height: 100%;
+  margin: 0;
+  padding: 10px;
+  border: none;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+}
+/* Only while open: setting display on a closed dialog would show it. */
+.image-viewer[open] { display: flex; flex-direction: column; gap: 10px; }
+.image-viewer-bar { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.image-viewer-title { flex: 1; font-weight: 600; }
+.image-viewer-stage {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.image-viewer-stage img { max-width: 100%; max-height: 100%; border-radius: var(--radius-sm); }
+.btn-viewer {
+  padding: 6px 12px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 6px;
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+  font-family: var(--font);
+  font-size: 12px;
+  cursor: pointer;
+}
+.btn-viewer:hover { border-color: var(--accent-from); }
+.btn-viewer:disabled { opacity: 0.4; cursor: default; }

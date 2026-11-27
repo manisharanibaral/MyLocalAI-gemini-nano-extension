@@ -44,28 +44,83 @@ function setAttachedImages(dataUrls, label, note = "") {
   attachedImages = dataUrls.map(url => url.split(",")[1]);
   attachedImagesNote = note;
   attachedImageIsAuto = false; // automatic callers set it back to true after this
+  attachedPage = null; // the full-page capture sets it again after this
+  closeImageViewer(); // it was showing the replaced images
   showImagePreview(dataUrls, label);
   updateSendButton();
 }
 
 function showImagePreview(dataUrls, label) {
-  imagePreviewThumbs.replaceChildren(...dataUrls.map((url, i) => {
-    const img = document.createElement("img");
-    img.src = url;
-    img.alt = `Attached image preview ${i + 1}`;
-    return img;
-  }));
+  imagePreviewThumbs.replaceChildren(...dataUrls.map((url, i) => createThumbnail(url, i, dataUrls.length)));
   imagePreviewText.textContent = label;
   imagePreviewText.title = label;
+  btnClearImage.title = "Clear image";
+  imagePreviewCard.classList.remove("capturing");
   imagePreviewCard.classList.remove("hidden");
+}
+
+// A thumbnail opens the full-size view. With several images each one can also be removed on its
+// own; a single image already has the card's ✕.
+function createThumbnail(url, index, count) {
+  const thumb = document.createElement("div");
+  thumb.className = "img-thumb";
+
+  const img = document.createElement("img");
+  img.src = url;
+  img.alt = `Attached image preview ${index + 1}`;
+  const view = createThumbButton("img-thumb-view", `Preview image ${index + 1}`, () => openImageViewer(index));
+  view.appendChild(img);
+  thumb.appendChild(view);
+
+  if (count > 1) {
+    const remove = createThumbButton("img-thumb-remove", `Remove image ${index + 1}`, () => removeAttachedImage(index));
+    remove.textContent = "✕";
+    thumb.appendChild(remove);
+  }
+  return thumb;
+}
+
+function createThumbButton(className, label, onClick) {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = className;
+  button.title = label;
+  button.setAttribute("aria-label", label);
+  button.addEventListener("click", onClick);
+  return button;
+}
+
+function toImageDataUrl(base64) {
+  return `data:image/jpeg;base64,${base64}`;
+}
+
+function removeAttachedImage(index) {
+  if (attachedImages.length <= 1) {
+    clearAttachedImage();
+    return;
+  }
+  // A new array: a message that is being sent may still hold the old one.
+  attachedImages = attachedImages.filter((_, i) => i !== index);
+  // The user picked this set, so an automatic screenshot must not replace it.
+  attachedImageIsAuto = false;
+  let label = "Attached image";
+  if (attachedPage) {
+    attachedPage = { ...attachedPage, parts: attachedPage.parts.filter((_, i) => i !== index) };
+    ({ label, note: attachedImagesNote } = describePageParts(attachedPage));
+  }
+  showImagePreview(attachedImages.map(toImageDataUrl), label);
+  updateSendButton();
 }
 
 // Also cancels a running page capture: its ✕, New chat and a model without vision all end here.
 function clearAttachedImage() {
-  pageCapture?.abort();
+  pageCapture?.cancel.abort();
   pageCapture = null;
   attachedImages = [];
   attachedImagesNote = "";
+  attachedPage = null;
+  closeImageViewer();
+  imagePreviewCard.classList.remove("capturing");
   imagePreviewCard.classList.add("hidden");
   imagePreviewThumbs.replaceChildren();
   imagePreviewText.textContent = "Attached image";
