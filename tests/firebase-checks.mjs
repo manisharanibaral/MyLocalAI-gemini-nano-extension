@@ -5,7 +5,7 @@ import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import vm from "node:vm";
-import { EDITIONS, SHARED_FILES } from "../scripts/build.mjs";
+import { EDITIONS, SHARED_FILES, zipExcludeArgs } from "../scripts/build.mjs";
 import { sidebarHtml, sidebarJs, sidebarPaths } from "./helpers/sources.mjs";
 
 const root = new URL("../", import.meta.url);
@@ -32,6 +32,10 @@ const edition = EDITIONS["firebase-hybrid"];
 assert.ok(edition, "EDITIONS should define firebase-hybrid");
 assert.deepEqual(edition.backends, ["firebase"], "firebase-hybrid uses only the firebase provider (it routes Nano itself)");
 assert.deepEqual(edition.optionalFiles, ["firebase-settings.local.js"], "the local config ships only when present");
+assert.deepEqual(zipExcludeArgs(edition.optionalFiles), ["-x", "firebase-settings.local.js"],
+  "the zip leaves out the local config, which holds the App Check debug token");
+assert.deepEqual(zipExcludeArgs([]), [], "editions without local files zip everything");
+assert.match(read(".mcp.json"), /"firebase-tools@\d+\.\d+\.\d+"/, "the Firebase MCP tool runs a pinned version, not @latest");
 assert.match(edition.manifest.name, /Firebase/, "the edition needs its own name");
 assert.equal(/zero cloud/i.test(edition.manifest.description), false, "the description must not claim zero cloud");
 assert.ok(edition.manifest.description.length <= 132, "Chrome limits descriptions to 132 characters");
@@ -40,8 +44,19 @@ assert.deepEqual(edition.manifest.host_permissions, ["https://firebasevertexai.g
 assert.ok(Number(edition.manifest.minimum_chrome_version) >= 139, "hybrid on-device inference needs Chrome 139+");
 
 // ===== Build output =====
-execFileSync(process.execPath, ["scripts/build.mjs", "firebase-hybrid"], { cwd: root, stdio: "ignore" });
+// With the zip tool installed, also build and inspect the zip that would be shared or uploaded.
+const canZip = (() => {
+  try { execFileSync("zip", ["-v"], { stdio: "ignore" }); execFileSync("unzip", ["-v"], { stdio: "ignore" }); return true; } catch (_) { return false; }
+})();
+execFileSync(process.execPath, ["scripts/build.mjs", "firebase-hybrid", ...(canZip ? ["--zip"] : [])], { cwd: root, stdio: "ignore" });
 const dist = "dist/mylocalai-firebase-hybrid/";
+if (canZip) {
+  const listing = execFileSync("unzip", ["-l", "dist/mylocalai-firebase-hybrid.zip"], { cwd: root, encoding: "utf8" });
+  assert.match(listing, /manifest\.json/, "the zip holds the edition");
+  assert.equal(listing.includes("firebase-settings.local.js"), false, "the zip never holds the local config (App Check debug token)");
+} else {
+  console.warn("! zip/unzip not installed: the zip contents were not checked");
+}
 for (const file of ["providers/firebase-backend.js", "vendor/firebase-ai.js", "sidebar.html", ...sidebarPaths, "config.js", "manifest.json"]) {
   assert.ok(exists(`${dist}${file}`), `dist should ship ${file}`);
 }
@@ -54,7 +69,8 @@ for (const file of ["providers/firebase-backend.js", "vendor/firebase-ai.js", "s
   assert.deepEqual(manifest.host_permissions, ["https://firebasevertexai.googleapis.com/*"], "built manifest host access");
   assert.equal(manifest.minimum_chrome_version, "139");
   assert.equal(/zero cloud/i.test(manifest.description), false, "built description must not claim zero cloud");
-  assert.equal(JSON.stringify(manifest).includes("content_security_policy"), false, "keep MV3's default CSP (no remote code)");
+  const scriptPolicy = /script-src ([^;]*)/.exec(manifest.content_security_policy?.extension_pages ?? "script-src 'self'")[1];
+  assert.equal(scriptPolicy.trim(), "'self' 'wasm-unsafe-eval'", "keep MV3's default script policy (no remote code)");
 }
 
 // ===== Secrets stay out of git =====

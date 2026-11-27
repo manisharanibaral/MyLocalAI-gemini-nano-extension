@@ -3,7 +3,8 @@
  * Builds the MyLocalAI editions from the shared source in the repo root.
  *
  *   node scripts/build.mjs            → dist/mylocalai-{nano,ollama,mixed,firebase-hybrid}/
- *   node scripts/build.mjs --zip      → also dist/mylocalai-<edition>.zip (needs `zip`)
+ *   node scripts/build.mjs --zip      → also dist/mylocalai-<edition>.zip (needs `zip`; never
+ *                                       contains an edition's local files, see optionalFiles)
  *   node scripts/build.mjs nano       → build only the listed edition(s)
  *
  * Each edition gets its own manifest.json (name, permissions) and config.js
@@ -71,7 +72,9 @@ export const EDITIONS = {
   },
   "firebase-hybrid": {
     backends: ["firebase"],
-    // The real Firebase web config is git-ignored; ship it in this build only when it exists.
+    // The real Firebase web config is git-ignored; it goes into dist/ (for Load unpacked) when
+    // it exists, but never into the zip: it holds the App Check debug token, a secret that
+    // lets anyone who has it call Firebase AI Logic as this app.
     optionalFiles: ["firebase-settings.local.js"],
     manifest: {
       name: "MyLocalAI — Firebase Hybrid",
@@ -108,6 +111,20 @@ function copyOptionalFiles(edition, files, outDir) {
   }
 }
 
+// The zip is what gets shared or uploaded, so local files (secrets, personal config) stay out.
+function zipEdition(edition, outDir, localFiles) {
+  const zipPath = join(DIST, `mylocalai-${edition}.zip`);
+  rmSync(zipPath, { force: true });
+  execFileSync("zip", ["-qr", zipPath, ".", ...zipExcludeArgs(localFiles)], { cwd: outDir });
+  const leftOut = localFiles.filter((file) => existsSync(join(outDir, file)));
+  if (leftOut.length) console.warn(`! ${edition}: ${leftOut.join(", ")} left out of the zip (local only).`);
+}
+
+// zip's -x takes patterns relative to the folder being zipped.
+export function zipExcludeArgs(localFiles) {
+  return localFiles.length ? ["-x", ...localFiles] : [];
+}
+
 function build(edition, { zip }) {
   const spec = EDITIONS[edition];
   const outDir = join(DIST, `mylocalai-${edition}`);
@@ -127,11 +144,7 @@ function build(edition, { zip }) {
   writeFileSync(join(outDir, "manifest.json"), JSON.stringify(manifest, null, 2) + "\n");
   writeFileSync(join(outDir, "config.js"), buildConfig(edition, spec.backends));
 
-  if (zip) {
-    const zipPath = join(DIST, `mylocalai-${edition}.zip`);
-    rmSync(zipPath, { force: true });
-    execFileSync("zip", ["-qr", zipPath, "."], { cwd: outDir });
-  }
+  if (zip) zipEdition(edition, outDir, spec.optionalFiles ?? []);
 
   console.log(`✓ ${edition.padEnd(15)} → dist/mylocalai-${edition}/${zip ? " (+ .zip)" : ""}`);
 }

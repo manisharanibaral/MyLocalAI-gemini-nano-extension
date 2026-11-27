@@ -24,7 +24,7 @@ MyLocalAI is a Manifest V3 browser extension (Chrome side panel) for private on-
 ```bash
 node scripts/build.mjs               # build all editions into dist/mylocalai-{nano,ollama,mixed,firebase-hybrid}/
 node scripts/build.mjs nano          # build one edition (nano | ollama | mixed | firebase-hybrid)
-node scripts/build.mjs --zip         # also produce dist/mylocalai-<edition>.zip (needs `zip`; the firebase-hybrid zip includes firebase-settings.local.js if present)
+node scripts/build.mjs --zip         # also produce dist/mylocalai-<edition>.zip (needs `zip`; firebase-settings.local.js goes into dist/ but never into a zip, since it holds the App Check debug token)
 
 node tests/regression-checks.mjs     # static checks over source files (no browser)
 node tests/edition-checks.mjs        # runs the build, then asserts each dist/ edition's config + manifest

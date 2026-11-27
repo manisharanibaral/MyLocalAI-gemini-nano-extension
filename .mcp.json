@@ -5,7 +5,7 @@
       "command": "npx",
       "args": [
         "-y",
-        "firebase-tools@latest",
+        "firebase-tools@15.37.0",
         "mcp"
       ],
       "env": {}

@@ -4,5 +4,6 @@ import "./regression/core.mjs";
 import "./regression/responses.mjs";
 import "./regression/screenshots-and-context.mjs";
 import "./regression/settings-and-switcher.mjs";
+import "./regression/security.mjs";
 
 console.log("Regression checks passed");

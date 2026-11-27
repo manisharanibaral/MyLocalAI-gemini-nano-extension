@@ -39,7 +39,7 @@ Other options:
 
 ```bash
 node scripts/build.mjs nano          # build just one edition
-node scripts/build.mjs --zip         # also make dist/mylocalai-<edition>.zip (e.g. for the Chrome Web Store)
+node scripts/build.mjs --zip         # also make dist/mylocalai-<edition>.zip (e.g. for the Chrome Web Store; never includes firebase-settings.local.js)
 ```
 
 > **No Node?** The repository root is itself the **Mixed** edition. You can load the root folder directly (step 2) and skip the build.
@@ -160,7 +160,7 @@ Cloud models (free tier only): **Fast**: `gemini-3.5-flash-lite` (default), **Fr
 5. **App Check (needed for cloud answers).** Firebase AI Logic enforces App Check. A Chrome extension can't use the web attestation provider (reCAPTCHA is a remote script, which Manifest V3 forbids), so this edition uses an **App Check debug token**:
    - Leave `appCheckDebugToken: ""`, open the side panel, right-click → **Inspect**, and copy the `App Check debug token: …` line from the Console.
    - Register it in Firebase console → **Security → App Check → Apps → Manage debug tokens**.
-   - Optionally paste it into `appCheckDebugToken` so it survives reinstalls. Treat it like a password: anyone holding it can use your project's App Check.
+   - Optionally paste it into `appCheckDebugToken` so it survives reinstalls. Treat it like a password: anyone holding it can use your project's App Check. `--zip` never packs `firebase-settings.local.js`, so a zip you share or upload carries neither the token nor your config.
 
 **How chat history reaches the model.** Firebase on-device inference is single-turn (each call is a fresh Chrome session). Each request therefore sends **one prompt**: the newest earlier turns, at most 10 messages and about 12,000 characters, labelled `User:` / `Assistant:`, followed by your new message. The system prompt goes in the model's own slot (on-device `initialPrompts`, cloud `systemInstruction`). The cloud route gets the same prompt, so an answer doesn't depend on which side served it. With **Responses at once** above 1, answers are generated one after another, because the SDK replaces its on-device session on every call.
 
@@ -170,7 +170,7 @@ Cloud models (free tier only): **Fast**: `gemini-3.5-flash-lite` (default), **Fr
 
 - **Chat:** type a message and press **Enter**. **Shift+Enter** adds a new line. Click ■ to stop a reply.
 - **Ask about a webpage:** with the panel open, just drag to select text on the page: the text is attached to your next question and, when screenshots are on, a screenshot of the page (with your selection) goes in the message box too. Without site access, select text, right-click, and choose **Use selection as MyLocalAI context**.
-- **Switch models:** the pill next to the send button names the model that is answering. Click it to switch without leaving the chat. Mixed and Ollama editions list your installed Ollama models (and Gemini Nano in Mixed); the Firebase Hybrid edition offers Gemini Nano on-device or one of the cloud models (marked ☁️, because picking one sends your messages to Google). Your chat stays; only a switch *to* Gemini Nano starts with an empty model memory. The pill is hidden in the Nano edition, which has one model, and is locked while an answer is streaming.
+- **Switch models:** the pill next to the send button names the model that is answering. Click it to switch without leaving the chat. Mixed and Ollama editions list your installed Ollama models (and Gemini Nano in Mixed); the Firebase Hybrid edition offers Gemini Nano on-device or one of the cloud models (marked ☁️, because picking one sends your messages to Google). Your chat stays; on a switch *to* Gemini Nano the chat's recent text is given back to it, and a note says if some of it didn't fit. The pill is hidden in the Nano edition, which has one model, and is locked while an answer is streaming.
 - **Images:** when the model supports images, a **+** button appears. It opens a menu to upload an image, take a screenshot of the current tab, or screenshot the whole page. You can also paste an image or drag one onto the input box.
 - **Screenshot whole page:** one tall picture of a long page would be shrunk until its text is unreadable, so MyLocalAI scrolls the page and attaches one image per screen, in order (up to 8; the label says when a longer page was cut off). While it runs, the page gets a glowing border with a *Capturing…* label (neither appears in the pictures). Stay on the tab until it finishes. **Stop & save** ends it early and keeps the images taken so far; the ✕ cancels and keeps nothing. Pinned headers appear only in the first image, and your scroll position is restored. Many images need more model memory: if Gemini Nano says the message is too long, start a new chat; with Ollama, a small context window can make the model ignore some images, so raise its context length.
 - **Review attached images:** click a thumbnail above the message box to see it full size (◀ ▶ arrow keys move between images, Esc closes). Remove one with the ✕ on its thumbnail or **Remove** in the preview; the model is told which parts of the page are still attached.

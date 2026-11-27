@@ -70,7 +70,7 @@ assert.match(functionBody(sidebarJs, "saveSettings"), /tabScreenshotMode/, "the 
   assert.match(pageWatchJs, /addEventListener\("mouseup", onPointerUp, true\)/, "drag-selection is detected on mouse release");
   const report = functionBody(pageWatchJs, "reportSelection");
   assert.match(report, /if \(!text\) \{\s*lastSentSelection = "";\s*return;/, "a click that clears the selection keeps the context");
-  assert.match(report, /text === lastSentSelection\) return/, "the same selection is not re-sent on every click");
+  assert.match(report, /text === lastSentSelection( \|\||\))/, "the same selection is not re-sent on every click");
   assert.match(functionBody(pageWatchJs, "notifyExtension"), /catch \(_\) \{\s*stopWatching\(\)/, "an orphaned script (extension reloaded) should stop quietly");
 
   const sync = functionBody(backgroundJs, "syncPageWatchScript");

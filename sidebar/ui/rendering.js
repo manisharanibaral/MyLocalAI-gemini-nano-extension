@@ -59,6 +59,10 @@ function getMarkdownRenderer() {
   };
   // Never pass raw HTML from the model through; show it as text.
   renderer.html = ({ text }) => escapeHtml(text);
+  // Never load an image the model names: fetching it would send whatever the model put in
+  // its address (e.g. text from this chat, after a prompt injection) to that server.
+  // The manifest's img-src policy blocks such requests too.
+  renderer.image = ({ href, text }) => escapeHtml(`🖼️ [image not loaded: ${text || "image"}] ${href || ""}`.trim());
 
   if (typeof DOMPurify !== "undefined") {
     // Links inside the sidebar must open in a new tab, not replace the chat.
