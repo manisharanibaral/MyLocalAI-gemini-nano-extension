@@ -188,19 +188,21 @@
   // ===================== MODEL =====================
   // Both sides get the same system prompt and sampling settings, in each side's own format.
   // modeKey is an sdk.InferenceMode key: the route's own, or one chosen for a single request.
+  // Each side's prompt also names that side's model (withCloudIdentity / withDeviceIdentity).
   function buildModelParams(settings, modeKey, cloudModelId) {
     const { sdk } = firebaseServices;
+    const cloudModelName = CLOUD_MODELS[cloudModelId].id;
     return {
       mode: sdk.InferenceMode[modeKey],
       inCloudParams: {
-        model: CLOUD_MODELS[cloudModelId].id,
-        systemInstruction: settings.systemPrompt,
+        model: cloudModelName,
+        systemInstruction: withCloudIdentity(settings.systemPrompt, cloudModelName),
         generationConfig: cloudGenerationConfig(settings),
       },
       onDeviceParams: {
         createOptions: {
           ...(deviceModel.vision ? VISION_IO : TEXT_IO),
-          initialPrompts: [{ role: "system", content: settings.systemPrompt }],
+          initialPrompts: [{ role: "system", content: withDeviceIdentity(settings.systemPrompt) }],
           ...deviceSamplingOptions(settings),
         },
       },
@@ -236,7 +238,7 @@
 
   // ===================== MULTI-TURN → SINGLE PROMPT =====================
   // In providers/firebase-prompt.js, which sidebar.html loads first.
-  const { buildConversationPrompt } = window.MyLocalAIFirebasePrompt;
+  const { buildConversationPrompt, withCloudIdentity, withDeviceIdentity } = window.MyLocalAIFirebasePrompt;
 
   function buildRequest(prompt, images = []) {
     if (images.length === 0) return prompt;
@@ -391,8 +393,8 @@
     return {
       badge: isCloudAllowed() ? "Firebase Hybrid" : "Firebase Hybrid",
       hint: route.usesCloud
-        ? `Firebase AI Logic · Gemini Nano${onDevice ? "" : " (not ready)"} + cloud ${cloud}`
-        : "Firebase AI Logic · Gemini Nano · on-device",
+        ? ` Gemini Nano${onDevice ? "" : " (not ready)"} + cloud ${cloud}`
+        : " Gemini Nano · on-device",
       welcome: route.usesCloud
         ? `Powered by Firebase AI Logic. Answers run on-device with Gemini Nano when possible; otherwise your messages go to Google's ${cloud}.`
         : "Powered by Firebase AI Logic with Gemini Nano, on your device. Cloud fallback is off.",

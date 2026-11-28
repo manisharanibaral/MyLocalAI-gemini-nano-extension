@@ -167,6 +167,7 @@ const fullMemories = (count) => JSON.stringify(Array.from({ length: count }, (_,
   // With no memories the system prompt is exactly what it was before memory existed.
   const { panel } = await ollamaPanel({ storage: { sysPrompt: "Be formal." } });
   assert.equal(panel.evaluate("getSystemPrompt()"), "Be formal.");
+  assert.equal(panel.evaluate('getSystemPrompt("ollama")'), `Be formal.\n\n${panel.evaluate('modelIdentityLine("ollama")')}`);
 }
 
 // ===================== GEMINI NANO: TOOL CALL AND A NEW CHAT WITH THE NEW MEMORY =====================

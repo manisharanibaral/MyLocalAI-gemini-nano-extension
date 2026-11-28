@@ -206,6 +206,13 @@ assert.ok(sidebarJs.indexOf("function streamOllama(") < sidebarJs.indexOf("funct
   }
   assert.equal(provider.id, "firebase");
 
+  // Each side of the hybrid model is told which model it is (firebase-prompt.js).
+  const { withCloudIdentity, withDeviceIdentity } = sandbox.window.MyLocalAIFirebasePrompt;
+  assert.match(withCloudIdentity("Be brief.", "gemini-3.5-flash-lite"),
+    /^Be brief\.\n\nAbout you: .*the model answering is gemini-3\.5-flash-lite, a Google Gemini model running in Google's cloud through Firebase AI Logic\./);
+  assert.match(withDeviceIdentity("Be brief."), /^Be brief\.\n\nAbout you: .*the model answering is Google's on-device model built into Chrome, run through Firebase AI Logic/);
+  assert.match(withDeviceIdentity(""), /^About you:/, "an empty prompt leaves just the identity line");
+
   const build = provider.buildConversationPrompt;
   assert.equal(build([{ role: "user", content: "Hi" }]), "Hi", "a first message is sent as-is");
 
@@ -387,7 +394,7 @@ assert.match(backendJs, /\.generateContent\(prompt/, "structured output calls Fi
   assert.equal(routeSelect.disabled, true, "and can't be changed while off");
   assert.equal(modelSelect.disabled, true);
   assert.equal(provider.describe().usesCloud, false, "the sidebar may now say answers stay on the device");
-  assert.match(provider.describe().badge, /Offline/);
+  assert.equal(provider.describe().badge, "Firebase Hybrid", "the header keeps one short name; the route shows in the hint");
   assert.equal(stored.get("firebaseRoute"), "prefer-cloud", "the earlier choice is remembered for when it's turned on");
 
   cloudSwitch.checked = true;

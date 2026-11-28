@@ -208,7 +208,7 @@ assert.equal(/initNanoSession/.test(functionBody(sidebarJs, "startNewChat")), fa
     "migrated history must not share the startup chat's id");
 }
 assert.match(functionBody(sidebarJs, "loadConversation"), /resetNanoChat\(\)/, "loading a saved chat should reset Nano's context via a clone");
-assert.match(functionBody(sidebarJs, "resetNanoChat"), /!nanoBaseSession \|\| nanoBaseSystemPrompt !== getSystemPrompt\(\)\)\s*\{\s*await initNanoSession\(\)/,
+assert.match(functionBody(sidebarJs, "resetNanoChat"), /!nanoBaseSession \|\| nanoBaseSystemPrompt !== getSystemPrompt\("nano"\)\)\s*\{\s*await initNanoSession\(\)/,
   "resetNanoChat should do a full init when no base exists, or when a memory changed the system prompt");
 // After an idle unload, New chat / loading a chat must not pull the model back into RAM:
 // nothing would restart the idle timer, so the model would stay loaded forever.

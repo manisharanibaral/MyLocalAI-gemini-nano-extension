@@ -22,7 +22,7 @@ function ollamaChatMessages(history) {
 // trimmed and changes only when the chat is compacted again; between compactions the start of
 // every request stays the same, which lets Ollama reuse what it already read.
 function ollamaSystemContent(summary) {
-  return summary ? `${getSystemPrompt()}\n\n${chatSummaryBlock(summary)}` : getSystemPrompt();
+  return summary ? `${getSystemPrompt("ollama")}\n\n${chatSummaryBlock(summary)}` : getSystemPrompt("ollama");
 }
 
 // Only the selected answer (already in `content`) belongs in the prompt; the unused
@@ -46,7 +46,7 @@ function earlierImagesNote(count) {
 
 // Characters left for earlier turns once the system message, the new message (its images
 // included) and room for the reply are taken out of OLLAMA_CONTEXT_TOKENS.
-function ollamaHistoryBudgetChars(latest, system = getSystemPrompt()) {
+function ollamaHistoryBudgetChars(latest, system = getSystemPrompt("ollama")) {
   const replyTokens = getAnswerTokenCap({ thinking: ollamaThinkingEnabled() }) || OLLAMA_REPLY_RESERVE_TOKENS;
   const imageTokens = (latest?.images?.length || 0) * OLLAMA_TOKENS_PER_IMAGE;
   const fixedChars = system.length + (latest ? messageText(latest).length : 0);

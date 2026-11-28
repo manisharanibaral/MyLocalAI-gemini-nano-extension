@@ -46,7 +46,7 @@ const lastUserMessage = (ollama) => lastBody(ollama).messages.at(-1).content;
   const { ollama, panel } = await ollamaPanel();
   await panel.evaluate('sendMessage("hi")');
   assert.equal(lastBody(ollama).options.num_predict, 1500, "Normal is the default cap");
-  assert.equal(lastBody(ollama).messages[0].content, panel.evaluate("DEFAULT_SYSTEM_PROMPT"), "Normal adds no hint");
+  assert.equal(lastBody(ollama).messages[0].content, panel.evaluate('`${DEFAULT_SYSTEM_PROMPT}\\n\\n${modelIdentityLine("ollama")}`'), "Normal adds no hint");
 }
 {
   const { ollama, panel } = await ollamaPanel({ storage: { answerLength: "short", sysPrompt: "Be formal." } });

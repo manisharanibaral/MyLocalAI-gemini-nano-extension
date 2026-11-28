@@ -75,7 +75,7 @@ async function initNanoSession() {
   let isCreating = true;
   // Current Prompt API: system prompt goes in initialPrompts (systemPrompt was removed).
   // Extensions must pass temperature and topK together, or neither.
-  const systemText = getSystemPrompt();
+  const systemText = getSystemPrompt("nano");
   const options = {
     initialPrompts: [{ role: "system", content: systemText }],
     temperature: parseFloat(tempSlider.value),
@@ -162,7 +162,7 @@ async function resetNanoChat() {
   if (isModelUnloaded) return;
   // A memory saved since the base session was made changed the system prompt, and a session's
   // system prompt is fixed, so the new chat needs a new base session.
-  if (!nanoBaseSession || nanoBaseSystemPrompt !== getSystemPrompt()) {
+  if (!nanoBaseSession || nanoBaseSystemPrompt !== getSystemPrompt("nano")) {
     await initNanoSession();
     return;
   }

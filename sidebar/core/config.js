@@ -97,6 +97,9 @@ const DEFAULT_SYSTEM_PROMPT = `You are MyLocalAI, a helpful, accurate assistant.
 - If the request is unclear, ask one short question.
 - Reply in the user's language.
 - Use Markdown: ## headings for long answers, numbered steps, bullet lists, tables for comparisons, fenced code with a language tag.`;
+// Wraps the model's name in the line getSystemPrompt adds (modelIdentityLine in core/settings.js).
+const MODEL_IDENTITY_PREFIX = "About you: MyLocalAI is this Chrome extension; the model answering is";
+const MODEL_IDENTITY_SUFFIX = "If asked what model you are or who made you, say so plainly.";
 
 // ===================== MEMORY (facts the user lets MyLocalAI keep) =====================
 // Every memory is added to the system prompt, so these caps keep it small enough for Gemini

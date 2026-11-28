@@ -66,10 +66,24 @@ function loadSettings() {
 // The applied prompt (or the default) plus the answer-length hint. The hint is added to
 // custom prompts too, because the length setting applies whatever prompt is in use.
 // Saved memories come last; Gemini Nano picks up a change in its next chat (see resetNanoChat).
-function getSystemPrompt() {
+// `backend` ("nano" | "ollama") adds a line naming the model that answers. Providers pass none:
+// a hybrid provider only knows per request which model answers, so it adds its own line.
+function getSystemPrompt(backend = null) {
   const prompt = appliedSystemPrompt.trim() || DEFAULT_SYSTEM_PROMPT;
   const { hint } = getAnswerLength();
-  return [prompt, hint, memoryPromptBlock()].filter(Boolean).join("\n\n");
+  return [prompt, hint, modelIdentityLine(backend), memoryPromptBlock()].filter(Boolean).join("\n\n");
+}
+
+// Without this the model only knows it is "MyLocalAI", and denies being Gemini or names a
+// model it is not. It goes in custom prompts too, because it is a fact, not a style rule.
+function modelIdentityLine(backend) {
+  if (backend === "nano") {
+    return `${MODEL_IDENTITY_PREFIX} Gemini Nano, Google's on-device model built into Chrome, so chats stay on this device. ${MODEL_IDENTITY_SUFFIX}`;
+  }
+  if (backend === "ollama") {
+    return `${MODEL_IDENTITY_PREFIX} ${getOllamaModel()}, running locally through Ollama on this computer. ${MODEL_IDENTITY_SUFFIX}`;
+  }
+  return "";
 }
 
 function getAnswerLength() {

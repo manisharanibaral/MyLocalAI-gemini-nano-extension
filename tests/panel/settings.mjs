@@ -12,6 +12,8 @@ async function ollamaPanel({ storage = {}, globals = {} } = {}) {
 }
 const stored = (panel, key) => panel.evaluate(`localStorage.getItem(${JSON.stringify(key)})`);
 const systemPromptSent = (ollama) => ollama.chatBodies.at(-1).messages[0].content;
+// The applied prompt, before the line naming the model (modelIdentityLine) that every backend adds.
+const userPart = (systemPrompt) => systemPrompt.split("\n\nAbout you:")[0];
 
 // ===================== "RESPONSES AT ONCE" SAVES ONLY ITSELF =====================
 {
@@ -34,13 +36,13 @@ const systemPromptSent = (ollama) => ollama.chatBodies.at(-1).messages[0].conten
   assert.equal(panel.element("#sys-prompt").value, "Be brief.", "picking a saved prompt fills the box");
   assert.equal(stored(panel, "sysPrompt"), "Be formal.", "picking alone does not apply it");
   await panel.evaluate('sendMessage("hi")');
-  assert.equal(systemPromptSent(ollama), "Be formal.", "Ollama keeps the applied prompt until Apply");
+  assert.equal(userPart(systemPromptSent(ollama)), "Be formal.", "Ollama keeps the applied prompt until Apply");
 
   panel.element("#btn-apply-settings").fire("click");
   await until(() => ollama.connects === 2 && panel.evaluate("activeBackend") === "ollama", "the restart");
   assert.equal(stored(panel, "sysPrompt"), "Be brief.", "Apply saves the prompt");
   await panel.evaluate('sendMessage("hi again")');
-  assert.equal(systemPromptSent(ollama), "Be brief.", "after Apply the picked prompt is used");
+  assert.equal(userPart(systemPromptSent(ollama)), "Be brief.", "after Apply the picked prompt is used");
 }
 {
   const created = [];
@@ -48,10 +50,31 @@ const systemPromptSent = (ollama) => ollama.chatBodies.at(-1).messages[0].conten
   const LanguageModel = { ...nano.LanguageModel, create: async (options) => { created.push(options); return nano.LanguageModel.create(); } };
   const panel = bootPanel({ globals: { LanguageModel }, storage: { sysPrompt: "Nano rules." } });
   await until(() => panel.evaluate("activeBackend") === "nano", "the Nano backend");
-  assert.equal(created[0].initialPrompts[0].content, "Nano rules.", "Nano's session gets the applied prompt");
+  assert.equal(userPart(created[0].initialPrompts[0].content), "Nano rules.", "Nano's session gets the applied prompt");
   panel.element("#sys-prompt").value = "Unapplied";
   await panel.evaluate("restartSession()");
-  assert.equal(created.at(-1).initialPrompts[0].content, "Nano rules.", "only Apply (which saves first) changes Nano's prompt");
+  assert.equal(userPart(created.at(-1).initialPrompts[0].content), "Nano rules.", "only Apply (which saves first) changes Nano's prompt");
+}
+
+// ===================== THE MODEL KNOWS WHICH MODEL IT IS =====================
+// Without this line it called itself only "MyLocalAI" and denied being a Google model.
+{
+  const { ollama, panel } = await ollamaPanel({ storage: { sysPrompt: "Be formal.", ollamaModel: "llama3.2:3b" } });
+  await panel.evaluate('sendMessage("which model are you?")');
+  assert.match(systemPromptSent(ollama), /\n\nAbout you: .*the model answering is llama3\.2:3b, running locally through Ollama/,
+    "Ollama's prompt names the chosen Ollama model, after a custom prompt too");
+  assert.match(systemPromptSent(ollama), /If asked what model you are or who made you, say so plainly\./);
+  assert.equal(panel.evaluate("getSystemPrompt()").includes("About you:"), false,
+    "without a backend (what providers get) there is no line, so a hybrid provider can add its own per side");
+}
+{
+  const created = [];
+  const nano = fakeNano();
+  const LanguageModel = { ...nano.LanguageModel, create: async (options) => { created.push(options); return nano.LanguageModel.create(); } };
+  const panel = bootPanel({ globals: { LanguageModel } });
+  await until(() => panel.evaluate("activeBackend") === "nano", "the Nano backend");
+  assert.match(created[0].initialPrompts[0].content, /the model answering is Gemini Nano, Google's on-device model built into Chrome/,
+    "Nano's session is told it is Gemini Nano");
 }
 
 // ===================== DELETING ONE SAVED PROMPT =====================

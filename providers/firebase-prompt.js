@@ -48,5 +48,23 @@
     return kept;
   }
 
-  window.MyLocalAIFirebasePrompt = { buildConversationPrompt };
+  // Each side of the hybrid model gets a line naming itself, so an answer says which model
+  // really wrote it (the cloud one otherwise denies being a Google model). Same wording as
+  // the sidebar's modelIdentityLine for Nano and Ollama.
+  const IDENTITY_PREFIX = "About you: MyLocalAI is this Chrome extension; the model answering is";
+  const IDENTITY_SUFFIX = "If asked what model you are or who made you, say so plainly.";
+
+  function withCloudIdentity(systemPrompt, modelName) {
+    return joinPrompt(systemPrompt, `${IDENTITY_PREFIX} ${modelName}, a Google Gemini model running in Google's cloud through Firebase AI Logic. ${IDENTITY_SUFFIX}`);
+  }
+
+  function withDeviceIdentity(systemPrompt) {
+    return joinPrompt(systemPrompt, `${IDENTITY_PREFIX} Google's on-device model built into Chrome, run through Firebase AI Logic, so chats stay on this device. ${IDENTITY_SUFFIX}`);
+  }
+
+  function joinPrompt(systemPrompt, line) {
+    return [String(systemPrompt ?? "").trim(), line].filter(Boolean).join("\n\n");
+  }
+
+  window.MyLocalAIFirebasePrompt = { buildConversationPrompt, withCloudIdentity, withDeviceIdentity };
 })();

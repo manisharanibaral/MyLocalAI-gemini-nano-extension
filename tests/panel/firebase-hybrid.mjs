@@ -44,6 +44,11 @@ const LONG_DOCUMENT = "The quarterly report covers revenue, hiring and risks. ".
   assert.equal(longCall.params.mode, InferenceMode.ONLY_IN_CLOUD,
     "a message too long for Nano goes straight to the cloud instead of overflowing on the device");
   assert.equal(longCall.params.inCloudParams.model, "gemini-3.5-flash-lite", "on the user's cloud model");
+  assert.match(longCall.params.inCloudParams.systemInstruction, /the model answering is gemini-3\.5-flash-lite, a Google Gemini model/,
+    "the cloud model is told its own name, so it does not deny being a Google model");
+  assert.match(longCall.params.onDeviceParams.createOptions.initialPrompts[0].content, /the model answering is Google's on-device model built into Chrome/,
+    "and the on-device side is told it is the on-device model");
+  assert.equal(longCall.params.inCloudParams.systemInstruction.match(/About you:/g).length, 1, "one identity line, not the sidebar's as well");
   const cloudChip = chips(panel).at(-1);
   assert.match(cloudChip.textContent, /Cloud · gemini-3\.5-flash-lite · too long for on-device/, "and the chip says why");
   assert.equal(cloudChip.className, "msg-source msg-source-cloud");
