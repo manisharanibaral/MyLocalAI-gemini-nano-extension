@@ -15,6 +15,18 @@ Before you tell the user a change is done:
 4. Report what you ran and the actual result, including anything you could not verify.
 5. Alway create and edit new tests and verification when you edit or add code
 
+## Research notes: read before searching the web
+
+Saved research lives in `docs/research/` (index: `docs/research/README.md`). Read the matching file **before** fetching any web page or starting a research agent, and only go to a source URL listed there when the note lacks the detail you need. Devpost pages block automated fetches (403), so the notes are the reliable copy of the hackathon pages.
+
+- Writing the hackathon submission, README value proposition, demo video script, or checking a deadline, requirement, judging criterion or prize → `docs/research/hackathon.md` (rules with section numbers: `docs/HACKATHON_RULES.md`). Deadline: **Nov 30, 2026, 2:00 PM PT**.
+- Editing `providers/firebase-*.js`, `tools/firebase-bundle/`, the firebase-hybrid edition in `scripts/build.mjs`, adding a Firebase product (App Check, Remote Config, Auth, Firestore), choosing a model name, or building any new Firebase AI Logic hybrid app → `docs/research/firebase-ai-logic-hybrid.md`.
+- Editing `sidebar/backends/nano*.js`, model download/availability or context-window handling, or using another Chrome built-in AI API → `docs/research/chrome-built-in-ai.md`.
+- Arguing what is new about the project, or looking for UI ideas from similar extensions → `docs/research/similar-extensions.md`.
+- Planning the next feature, or changing routing, structured output or Remote Config behaviour → `docs/research/hybrid-decisions.md` (what is built, what is unverified, ranked ideas). Update it when you finish or change an item.
+
+When you learn something new from the web, add it to the matching note with the date and source URL, so the next agent doesn't fetch it again.
+
 ## What this is
 
 MyLocalAI is a Manifest V3 browser extension (Chrome side panel) for private on-device chat. There is no `package.json`, bundler, or dependency install: it is plain JS/HTML/CSS. Node 18+ is only needed for the build and tests.
