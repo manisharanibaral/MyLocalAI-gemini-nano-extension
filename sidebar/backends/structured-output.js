@@ -1,13 +1,16 @@
-// One-shot JSON answers from the active backend, used by the memory tool. They run outside the
-// chat: nothing is added to chatHistory, and Gemini Nano answers in a throwaway session.
+// One-shot JSON answers from the active backend, used by the memory tool and to compact long
+// chats (chat/compaction.js). They run outside the chat: nothing is added to chatHistory, and
+// Gemini Nano answers in a throwaway session.
 "use strict";
 
 // ===================== STRUCTURED OUTPUT =====================
 const STRUCTURED_OUTPUT_TIMEOUT_MS = 30000;
 
 // Resolves with the model's raw text (callers parse it), or rejects if the backend can't answer.
-async function askActiveBackendForJson(prompt, schema) {
-  const signal = AbortSignal.timeout(STRUCTURED_OUTPUT_TIMEOUT_MS);
+// options.signal lets the caller cancel it too (Stop); options.timeoutMs gives slow jobs longer.
+async function askActiveBackendForJson(prompt, schema, { timeoutMs = STRUCTURED_OUTPUT_TIMEOUT_MS, signal: stopSignal } = {}) {
+  const timeout = AbortSignal.timeout(timeoutMs);
+  const signal = stopSignal && AbortSignal.any ? AbortSignal.any([timeout, stopSignal]) : timeout;
   if (activeBackend === "nano") return askNanoForJson(prompt, schema, signal);
   if (activeBackend === "ollama") return askOllamaForJson(prompt, schema, signal);
   if (isProviderActive()) return askProviderForJson(prompt, signal);

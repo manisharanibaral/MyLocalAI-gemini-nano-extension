@@ -149,7 +149,9 @@ async function assertFailsAndRestores({ onCapture, signal, expected, message }) 
   // so a full-page screenshot is not uploaded again on every later turn.
   let body;
   const sandbox = loadFunctions(["ollamaPromptStreaming", "ollamaRequestBody", "ollamaChatMessages", "ollamaTextMessage",
-    "ollamaLatestMessage", "earlierImagesNote", "ollamaHistoryBudgetChars", "ollamaThinkingEnabled", "newestTurnsWithin", "messageText"], {
+    "ollamaLatestMessage", "earlierImagesNote", "ollamaHistoryBudgetChars", "ollamaThinkingEnabled", "newestTurnsWithin", "messageText",
+    "modelHistory", "ollamaSystemContent", "chatSummaryBlock"], {
+    CHAT_SUMMARY_ROLE: "summary",
     getOllamaUrl: () => "http://x", getOllamaModel: () => "m", getSystemPrompt: () => "sys",
     chatHistory: [{ role: "user", content: "old", images: ["A"] }, { role: "assistant", content: "a" },
       { role: "user", content: "has __IMG__ typed" }, { role: "user", content: "page", images: ["B", "C"] }],

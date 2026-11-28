@@ -171,8 +171,23 @@ assert.ok(sidebarJs.indexOf("function streamOllama(") < sidebarJs.indexOf("funct
   const long = Array.from({ length: 30 }, (_, i) => ({ role: i % 2 ? "assistant" : "user", content: `m${i}` }));
   long.push({ role: "user", content: "now" });
   const kept = build(long).split("\n").filter((line) => /^(User|Assistant): /.test(line));
-  assert.equal(kept.length, 10, "only the last 10 earlier messages are kept");
+  assert.equal(kept.length, 20, "only the last 20 earlier messages are kept (where the panel compacts a chat)");
   assert.equal(kept.at(-1), "Assistant: m29", "the newest earlier turns are the ones kept");
+
+  // A compacted chat: the summary always goes in, before the turns; compacted turns never do.
+  const compacted = build([
+    { role: "user", content: "old question", compacted: true },
+    { role: "assistant", content: "old answer", compacted: true },
+    { role: "summary", content: "- The user is planning a trip to Goa." },
+    { role: "user", content: "x".repeat(20000) },
+    { role: "assistant", content: "ok" },
+    { role: "user", content: "Which beach?" },
+  ]);
+  assert.match(compacted, /^Summary of the earlier conversation:\n- The user is planning a trip to Goa\.\n/, "the summary comes first");
+  assert.equal(compacted.includes("old question"), false, "compacted messages are not sent again");
+  assert.match(compacted, /Assistant: ok\n\nReply to the user's latest message:\nWhich beach\?$/);
+  assert.match(build([{ role: "summary", content: "- s" }, { role: "user", content: "q" }]),
+    /^Summary of the earlier conversation:\n- s\n\nReply to the user's latest message:\nq$/, "a summary with no other turns still goes in");
 
   const huge = [{ role: "user", content: "x".repeat(20000) }, { role: "assistant", content: "ok" }, { role: "user", content: "q" }];
   assert.equal(build(huge).includes("x".repeat(100)), false, "turns past the character budget are dropped");

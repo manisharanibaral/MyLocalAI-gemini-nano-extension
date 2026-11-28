@@ -67,11 +67,17 @@ function ndjsonStream(frames, { waitForStop } = {}) {
 // counts for the closing done frame, as real Ollama sends them.
 // memoryCall: the JSON the memory tool's request (a non-streaming /api/chat with a `format`
 // schema) gets back; those requests go to memoryBodies, not chatBodies.
+// summaryCall: the JSON a chat-compaction request (schema with a `summary` field) gets back;
+// those go to summaryBodies.
 export function fakeOllama({ answer = ["Hello ", "there"], waitForStop = false, models = ["gemma4:e4b"], knowsModel = true,
-  capabilities = [], usage = null, memoryCall = { action: "none" } } = {}) {
-  const ollama = { chatBodies: [], memoryBodies: [], connects: 0, fetch: null }; // connects: /api/tags calls (one per init)
+  capabilities = [], usage = null, memoryCall = { action: "none" }, summaryCall = { summary: "- Earlier the user asked about m-messages." } } = {}) {
+  const ollama = { chatBodies: [], memoryBodies: [], summaryBodies: [], connects: 0, fetch: null }; // connects: /api/tags calls (one per init)
   ollama.fetch = async (url, options = {}) => {
     const body = options.body ? JSON.parse(options.body) : {};
+    if (url.endsWith("/api/chat") && body.format?.properties?.summary) {
+      ollama.summaryBodies.push(body);
+      return { ok: true, json: async () => ({ message: { content: JSON.stringify(summaryCall) } }) };
+    }
     if (url.endsWith("/api/chat") && body.format) {
       ollama.memoryBodies.push(body);
       return { ok: true, json: async () => ({ message: { content: JSON.stringify(memoryCall) } }) };

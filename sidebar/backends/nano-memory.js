@@ -4,26 +4,40 @@
 // Nano remembers a conversation only inside its session. A reopened chat, or the same chat
 // after the model was reloaded, starts in a new session, so the chat's recent turns are
 // added back with append(). Images are left out: they take far more context than text.
+// A compacted chat's summary goes first and is never the part left out (chat/compaction.js).
 // reserveTokens keeps room for a prompt about to be sent (see makeRoomInNano).
 // Returns { kept, total } messages so the caller can tell the user what Nano still knows.
 async function restoreNanoContext(history, reserveTokens = 0) {
-  const turns = history
-    .filter(m => m.role === "user" || m.role === "assistant")
+  const { summary, turns: chatTurns } = modelHistory(history);
+  const turns = chatTurns
     .map(m => ({ role: m.role, content: messageText(m) }))
     .filter(t => t.content.trim());
-  if (turns.length === 0 || !session) return { kept: 0, total: 0 };
+  if ((turns.length === 0 && !summary) || !session) return { kept: 0, total: 0 };
   if (typeof session.append !== "function") return { kept: 0, total: turns.length };
 
-  const kept = newestTurnsWithin(turns, nanoReplayBudgetChars(reserveTokens));
-  if (kept.length === 0) return { kept: 0, total: turns.length };
+  const replay = nanoReplayTurns(summary, turns, nanoReplayBudgetChars(reserveTokens));
+  const keptTurns = replay.filter(t => !t.isSummary).length;
+  if (replay.length === 0) return { kept: 0, total: turns.length };
   try {
-    await session.append(kept);
+    await session.append(replay.map(({ role, content }) => ({ role, content })));
     updateTokenInfo();
-    return { kept: kept.length, total: turns.length };
+    return { kept: keptTurns, total: turns.length };
   } catch (err) {
     console.warn("[MyLocalAI] Could not give Nano the earlier messages:", err.message);
     return { kept: 0, total: turns.length };
   }
+}
+
+// The summary as a turn of its own, then the newest turns that fit in what is left.
+function nanoReplayTurns(summary, turns, budgetChars) {
+  const summaryTurn = nanoSummaryTurn(summary);
+  if (!summaryTurn || summaryTurn.content.length > budgetChars) return newestTurnsWithin(turns, budgetChars);
+  return [summaryTurn, ...newestTurnsWithin(turns, budgetChars - summaryTurn.content.length)];
+}
+
+// A user turn: the Prompt API takes a system message only at the start of a session.
+function nanoSummaryTurn(summary) {
+  return summary ? { role: "user", content: chatSummaryBlock(summary), isSummary: true } : null;
 }
 
 // About half of the free context (after reserveTokens), at ~4 characters per token, so the

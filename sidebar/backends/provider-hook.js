@@ -45,10 +45,18 @@ async function reloadExternalProvider() {
   updateTokenInfo();
 }
 
+// What a provider is sent: the messages not yet compacted, after the chat's summary as one
+// { role: "summary", content } entry when it has one (chat/compaction.js).
+function providerHistory(history) {
+  const { summary, turns } = modelHistory(history);
+  const recent = turns.slice(-MAX_CHAT_MESSAGES);
+  return summary ? [{ role: CHAT_SUMMARY_ROLE, content: summary }, ...recent] : recent;
+}
+
 // chatHistory already ends with the message being answered (sendMessage pushed it).
 async function streamProvider(aiBubble, images) {
   const answer = await externalProvider.stream({
-    history: chatHistory.slice(-MAX_CHAT_MESSAGES),
+    history: providerHistory(chatHistory),
     images,
     signal: abortController.signal,
     settings: providerRequestSettings(),

@@ -108,3 +108,24 @@ const MAX_MEMORY_TITLE_CHARS = 60;
 const MAX_MEMORY_DESCRIPTION_CHARS = 240;
 // Only this much of a message is shown to the memory tool; long pastes are rarely about the user.
 const MAX_MEMORY_INPUT_CHARS = 1000;
+
+// ===================== AUTO-COMPACT (long chats) =====================
+// Past either limit, a chat's older messages are summarised by the model (chat/compaction.js),
+// so a long chat keeps its early context instead of losing the oldest messages. 10,000
+// characters (~3k tokens) fits every backend's history budget: Firebase keeps 12,000
+// characters / 20 messages, Nano about half its free context, Ollama what num_ctx leaves.
+const CHAT_COMPACT_AT_CHARS = 10000;
+const CHAT_COMPACT_AT_MESSAGES = 20;
+// The newest messages are kept as they are (always at least the latest question and answer).
+const CHAT_COMPACT_KEEP_MESSAGES = 6;
+const CHAT_COMPACT_KEEP_CHARS = 4000;
+const CHAT_SUMMARY_MAX_CHARS = 1500;
+// What one summary request reads: each message is cut to this, and the whole transcript too,
+// so the request fits Gemini Nano's context window.
+const CHAT_COMPACT_TURN_CHARS = 1500;
+const CHAT_COMPACT_INPUT_CHARS = 12000;
+// Writing a summary takes a small on-device model longer than a memory tool call.
+const CHAT_COMPACT_TIMEOUT_MS = 60000;
+// After a failed summary, this many more messages must arrive before it is tried again, so a
+// model that can't summarise doesn't add a long wait to every message.
+const CHAT_COMPACT_RETRY_MESSAGES = 6;

@@ -8,13 +8,21 @@
 // Earlier turns are kept newest first until the context budget is used up, so the system
 // prompt and the new message always fit.
 function ollamaChatMessages(history) {
-  const turns = history.filter(m => m.role === "user" || m.role === "assistant");
+  const { summary, turns } = modelHistory(history);
   const latest = turns.at(-1);
   const earlier = turns.slice(0, -1).map(ollamaTextMessage).filter(m => m.content.trim());
-  const kept = newestTurnsWithin(earlier, ollamaHistoryBudgetChars(latest));
-  const messages = [{ role: "system", content: getSystemPrompt() }, ...kept];
+  const system = ollamaSystemContent(summary);
+  const kept = newestTurnsWithin(earlier, ollamaHistoryBudgetChars(latest, system));
+  const messages = [{ role: "system", content: system }, ...kept];
   if (latest) messages.push(ollamaLatestMessage(latest));
   return messages;
+}
+
+// A compacted chat's summary (chat/compaction.js) rides in the system message, so it is never
+// trimmed and changes only when the chat is compacted again; between compactions the start of
+// every request stays the same, which lets Ollama reuse what it already read.
+function ollamaSystemContent(summary) {
+  return summary ? `${getSystemPrompt()}\n\n${chatSummaryBlock(summary)}` : getSystemPrompt();
 }
 
 // Only the selected answer (already in `content`) belongs in the prompt; the unused
@@ -36,12 +44,12 @@ function earlierImagesNote(count) {
   return count === 1 ? "(1 image was shown earlier.)" : `(${count} images were shown earlier.)`;
 }
 
-// Characters left for earlier turns once the system prompt, the new message (its images
+// Characters left for earlier turns once the system message, the new message (its images
 // included) and room for the reply are taken out of OLLAMA_CONTEXT_TOKENS.
-function ollamaHistoryBudgetChars(latest) {
+function ollamaHistoryBudgetChars(latest, system = getSystemPrompt()) {
   const replyTokens = getAnswerTokenCap({ thinking: ollamaThinkingEnabled() }) || OLLAMA_REPLY_RESERVE_TOKENS;
   const imageTokens = (latest?.images?.length || 0) * OLLAMA_TOKENS_PER_IMAGE;
-  const fixedChars = getSystemPrompt().length + (latest ? messageText(latest).length : 0);
+  const fixedChars = system.length + (latest ? messageText(latest).length : 0);
   const freeTokens = OLLAMA_CONTEXT_TOKENS - replyTokens - imageTokens - Math.ceil(fixedChars / CHARS_PER_TOKEN);
   return Math.max(0, freeTokens) * CHARS_PER_TOKEN;
 }

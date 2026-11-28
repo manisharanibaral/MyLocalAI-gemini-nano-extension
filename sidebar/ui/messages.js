@@ -82,12 +82,34 @@ function createSelectionToggle(quote) {
 }
 
 // A short line from MyLocalAI itself (not the model); shown in the chat but never saved.
+// Returns the note, so a note about work in progress can be updated when it ends.
 function appendChatNote(text) {
   const note = document.createElement("div");
   note.className = "msg-note";
   note.textContent = text;
   messagesEl.appendChild(note);
   scrollToBottom(true);
+  return note;
+}
+
+// A reopened compacted chat shows where its summary starts (chat/compaction.js).
+function appendCompactNote(summaryMessage) {
+  appendChatNote("").replaceChildren(createCompactDetails(summaryMessage));
+}
+
+// "Chat compacted", with the summary itself one click away: the user can see exactly what
+// the model now reads instead of the older messages, which stay visible above.
+function createCompactDetails(summaryMessage) {
+  const details = document.createElement("details");
+  details.className = "compact-note";
+  const label = document.createElement("summary");
+  const count = summaryMessage.compactedCount || 0;
+  label.textContent = `🗜️ Chat compacted: the model now reads a summary of the ${count} earlier ${count === 1 ? "message" : "messages"}. Show summary`;
+  const text = document.createElement("div");
+  text.className = "compact-summary";
+  text.textContent = messageText(summaryMessage);
+  details.append(label, text);
+  return details;
 }
 
 // The images of a sent message; several (a full-page screenshot) are laid out as a grid.

@@ -10,26 +10,30 @@
 
   // On-device Gemini Nano accepts about 9k tokens; ~12k characters of history (~3k tokens)
   // leaves room for the system prompt, page context and the answer.
-  const MAX_HISTORY_MESSAGES = 10;
+  // 20 messages matches the point where the panel compacts a chat (CHAT_COMPACT_AT_MESSAGES).
+  const MAX_HISTORY_MESSAGES = 20;
   const MAX_HISTORY_CHARS = 12000;
 
   // chatHistory entries are { role: "user"|"assistant", content, images? }. Images are sent
   // separately (the backend's buildRequest), never as text. The last entry is the message being answered.
+  // A compacted chat also has one { role: "summary", content } entry for its older messages;
+  // it always goes in, before the turns (which the budget may trim).
   function buildConversationPrompt(history) {
     const turns = history
-      .filter((m) => m.role === "user" || m.role === "assistant")
+      .filter((m) => (m.role === "user" || m.role === "assistant") && !m.compacted)
       .map((m) => ({ role: m.role, text: String(m.content ?? "").trim() }));
     const current = turns.pop();
     if (!current) return "";
+    const summary = String(history.find((m) => m.role === "summary")?.content ?? "").trim();
     const earlier = recentTurnsWithinBudget(turns);
-    if (earlier.length === 0) return current.text;
-    return [
-      "Conversation so far (oldest first):",
-      ...earlier.map((t) => `${t.role === "user" ? "User" : "Assistant"}: ${t.text}`),
-      "",
-      "Reply to the user's latest message:",
-      current.text,
-    ].join("\n");
+    const context = [
+      ...(summary ? ["Summary of the earlier conversation:", summary, ""] : []),
+      ...(earlier.length
+        ? ["Conversation so far (oldest first):", ...earlier.map((t) => `${t.role === "user" ? "User" : "Assistant"}: ${t.text}`), ""]
+        : []),
+    ];
+    if (context.length === 0) return current.text;
+    return [...context, "Reply to the user's latest message:", current.text].join("\n");
   }
 
   // Keeps the newest turns that fit both limits; older turns are dropped first.

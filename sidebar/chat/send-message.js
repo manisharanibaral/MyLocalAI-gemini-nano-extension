@@ -102,6 +102,8 @@ async function sendMessageNow(text) {
       return stream.finally(() => group.markDone(i));
     }));
     await recordResponses(group, results, chat);
+    // Awaited so Send stays blocked: no new message while older ones are being summarised.
+    await compactChatIfLarge(chat, abortController.signal);
     // Not awaited: learning runs after the reply and must never hold up the next message.
     if (text.trim()) learnFromMessage(text.trim(), chat.id);
   } catch (err) {

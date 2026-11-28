@@ -20,6 +20,8 @@ function loadConversation(id) {
       appendSavedResponseGroup(msg);
     } else if (msg.role === "assistant") {
       appendMessage("ai", msg.content, false, msg.reasoning);
+    } else if (msg.role === CHAT_SUMMARY_ROLE) {
+      appendCompactNote(msg);
     }
   });
 

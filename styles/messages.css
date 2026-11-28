@@ -39,6 +39,25 @@
   text-align: center;
 }
 
+/* "Chat compacted": click to read the summary the model now gets instead of older messages. */
+.compact-note summary {
+  cursor: pointer;
+  list-style: none;
+}
+.compact-note summary::-webkit-details-marker { display: none; }
+.compact-note summary:hover,
+.compact-note summary:focus-visible { color: var(--text-secondary); }
+.compact-summary {
+  margin-top: 6px;
+  padding: 8px 10px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
+  text-align: left;
+  white-space: pre-wrap;
+}
+
 .msg-label {
   font-size: 10px;
   font-weight: 700;
