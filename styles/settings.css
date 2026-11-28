@@ -203,3 +203,40 @@ select.settings-input { text-overflow: ellipsis; white-space: nowrap; }
   letter-spacing: 0.05em;
 }
 
+
+/* ---------- ON/OFF SWITCH (a checkbox with role="switch") ---------- */
+/* The whole row is the label, so the text is a click target too. */
+.settings-switch {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  cursor: pointer;
+}
+.settings-switch-text { display: flex; flex-direction: column; gap: 2px; flex: 1; min-width: 0; }
+.settings-switch-text .settings-hint { font-size: 11px; line-height: 1.4; }
+.settings-switch input { position: absolute; opacity: 0; width: 1px; height: 1px; }
+.switch-track {
+  position: relative;
+  flex-shrink: 0;
+  width: 34px;
+  height: 20px;
+  border-radius: 999px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-subtle);
+  transition: background var(--duration) var(--ease-out);
+}
+.switch-track::after {
+  content: "";
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--text-secondary);
+  transition: transform var(--duration) var(--ease-out), background var(--duration);
+}
+.settings-switch input:checked + .switch-track { background: var(--accent-grad); border-color: transparent; }
+.settings-switch input:checked + .switch-track::after { transform: translateX(14px); background: #fff; }
+.settings-switch input:focus-visible + .switch-track { outline: 2px solid var(--border-focus); outline-offset: 2px; }

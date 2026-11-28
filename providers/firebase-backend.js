@@ -35,13 +35,9 @@
   };
   const DEFAULT_ROUTE = "device";
 
-  // Firebase on-device inference is single-turn, so earlier turns are folded into one prompt.
-  // On-device Gemini Nano accepts about 9k tokens; ~12k characters of history (~3k tokens)
-  // leaves room for the system prompt, page context and the answer.
-  const MAX_HISTORY_MESSAGES = 10;
-  const MAX_HISTORY_CHARS = 12000;
-
-  const STORAGE_KEYS = { route: "firebaseRoute", cloudModel: "firebaseCloudModel" };
+  const STORAGE_KEYS = { route: "firebaseRoute", cloudModel: "firebaseCloudModel", cloudSwitch: "firebaseCloudSwitch" };
+  // "Cloud & internet" switch. Off overrides every cloud choice without forgetting it.
+  const CLOUD_SWITCH = { on: true, off: false };
 
   const TEXT_IO = { expectedInputs: [{ type: "text", languages: ["en"] }], expectedOutputs: [{ type: "text", languages: ["en"] }] };
   const VISION_IO = {
@@ -74,11 +70,14 @@
     try { localStorage.setItem(key, value); } catch (e) { console.warn("[MyLocalAI] Could not save Firebase setting", e); }
   }
 
-  function currentRoute() { return readStored(STORAGE_KEYS.route, ROUTES, DEFAULT_ROUTE); }
+  function isCloudAllowed() { return readStored(STORAGE_KEYS.cloudSwitch, CLOUD_SWITCH, "on") === "on"; }
+  // With the switch off, every request is on-device only, so no chat text can reach the cloud.
+  function currentRoute() { return isCloudAllowed() ? readStored(STORAGE_KEYS.route, ROUTES, DEFAULT_ROUTE) : DEFAULT_ROUTE; }
   function currentCloudModel() { return readStored(STORAGE_KEYS.cloudModel, CLOUD_MODELS, DEFAULT_CLOUD_MODEL); }
 
   // Fills and wires the "Firebase AI Logic" settings card and the overlay's cloud opt-in button.
-  function bindSettingsUI() {
+  // onSettingsChanged: the sidebar's way to rebuild the model (and its UI) right away.
+  function bindSettingsUI({ onSettingsChanged } = {}) {
     const card = $("firebase-settings");
     const routeSelect = $("firebase-route");
     const modelSelect = $("firebase-cloud-model");
@@ -87,12 +86,18 @@
     card.classList.remove("hidden");
     syncSettingsControls();
 
+    $("firebase-cloud-switch")?.addEventListener("change", (event) => {
+      setCloudAllowed(event.target.checked);
+      onSettingsChanged?.();
+    });
+
     // Saved immediately; "Apply & Restart Session" (or Retry) rebuilds the model with them.
     routeSelect.addEventListener("change", () => { storeSetting(STORAGE_KEYS.route, routeSelect.value); syncSettingsControls(); });
     modelSelect.addEventListener("change", () => storeSetting(STORAGE_KEYS.cloudModel, modelSelect.value));
 
     $("btn-firebase-enable-cloud")?.addEventListener("click", () => {
       // The user explicitly opts in to the cloud fallback from the error overlay.
+      storeSetting(STORAGE_KEYS.cloudSwitch, "on");
       storeSetting(STORAGE_KEYS.route, "prefer-device");
       syncSettingsControls();
       setCloudOptInVisible(false);
@@ -106,10 +111,19 @@
     const routeSelect = $("firebase-route");
     const modelSelect = $("firebase-cloud-model");
     if (!routeSelect || !modelSelect) return;
+    const cloudSwitch = $("firebase-cloud-switch");
+    if (cloudSwitch) cloudSwitch.checked = isCloudAllowed();
     routeSelect.value = currentRoute();
+    routeSelect.disabled = !isCloudAllowed();
     modelSelect.value = currentCloudModel();
     // The cloud model only matters when the route can reach the cloud.
     modelSelect.disabled = !ROUTES[currentRoute()].usesCloud;
+  }
+
+  function setCloudAllowed(allowed) {
+    storeSetting(STORAGE_KEYS.cloudSwitch, allowed ? "on" : "off");
+    if (!allowed) setCloudOptInVisible(false);
+    syncSettingsControls();
   }
 
   function setCloudOptInVisible(visible) {
@@ -268,36 +282,8 @@
   }
 
   // ===================== MULTI-TURN → SINGLE PROMPT =====================
-  // chatHistory entries are { role: "user"|"assistant", content, images? }. Images are sent
-  // separately (buildRequest), never as text. The last entry is the message being answered.
-  function buildConversationPrompt(history) {
-    const turns = history
-      .filter((m) => m.role === "user" || m.role === "assistant")
-      .map((m) => ({ role: m.role, text: String(m.content ?? "").trim() }));
-    const current = turns.pop();
-    if (!current) return "";
-    const earlier = recentTurnsWithinBudget(turns);
-    if (earlier.length === 0) return current.text;
-    return [
-      "Conversation so far (oldest first):",
-      ...earlier.map((t) => `${t.role === "user" ? "User" : "Assistant"}: ${t.text}`),
-      "",
-      "Reply to the user's latest message:",
-      current.text,
-    ].join("\n");
-  }
-
-  // Keeps the newest turns that fit both limits; older turns are dropped first.
-  function recentTurnsWithinBudget(turns) {
-    const kept = [];
-    let chars = 0;
-    for (let i = turns.length - 1; i >= 0 && kept.length < MAX_HISTORY_MESSAGES; i--) {
-      chars += turns[i].text.length;
-      if (chars > MAX_HISTORY_CHARS) break;
-      kept.unshift(turns[i]);
-    }
-    return kept;
-  }
+  // In providers/firebase-prompt.js, which sidebar.html loads first.
+  const { buildConversationPrompt } = window.MyLocalAIFirebasePrompt;
 
   function buildRequest(prompt, images = []) {
     if (images.length === 0) return prompt;
@@ -353,6 +339,7 @@
       ? "On-device · cloud fallback on"
       : "On-device · private";
     const options = [{ id: DEVICE_MODEL_ID, label: "Gemini Nano", detail: deviceDetail }];
+    if (!isCloudAllowed()) return { options, currentId: DEVICE_MODEL_ID }; // the switch hides cloud models
     for (const [key, model] of Object.entries(CLOUD_MODELS)) {
       const tier = key === "fast" ? "Fast" : "Frontier";
       options.push({ id: `${CLOUD_MODEL_ID_PREFIX}${key}`, label: model.id, detail: `☁️ Cloud · ${tier} · sends messages to Google` });
@@ -364,6 +351,8 @@
   function selectModel(id) {
     if (id === DEVICE_MODEL_ID) {
       storeSetting(STORAGE_KEYS.route, "device");
+    } else if (id.startsWith(CLOUD_MODEL_ID_PREFIX) && !isCloudAllowed()) {
+      throw new Error("Cloud & internet is off in Settings");
     } else if (id.startsWith(CLOUD_MODEL_ID_PREFIX) && Object.hasOwn(CLOUD_MODELS, id.slice(CLOUD_MODEL_ID_PREFIX.length))) {
       storeSetting(STORAGE_KEYS.route, "prefer-cloud");
       storeSetting(STORAGE_KEYS.cloudModel, id.slice(CLOUD_MODEL_ID_PREFIX.length));
@@ -391,6 +380,8 @@
     } catch (err) {
       lastSetupError = err.code || err.message;
       // Offer the cloud opt-in only when on-device is the problem and the config is fine.
+      // It stays offered with "Cloud & internet" off: the overlay covers Settings, and the
+      // button is an explicit click that turns the switch back on.
       setCloudOptInVisible(err.code === "DEVICE_UNAVAILABLE" || err.code === "DEVICE_NEEDS_GESTURE");
       throw err;
     }
@@ -417,7 +408,7 @@
     const cloud = CLOUD_MODELS[currentCloudModel()].id;
     const onDevice = deviceModel.status === "available";
     return {
-      badge: `Firebase Hybrid · ${route.badge}`,
+      badge: `Firebase Hybrid · ${isCloudAllowed() ? route.badge : "Offline · on-device"}`,
       hint: route.usesCloud
         ? `Firebase AI Logic · Gemini Nano${onDevice ? "" : " (not ready)"} + cloud ${cloud}`
         : "Firebase AI Logic · Gemini Nano · on-device",
@@ -469,7 +460,9 @@
         "On-device Gemini Nano isn't available in this Chrome, and cloud fallback is off.",
         "",
         "Needs Chrome desktop 139+ with chrome://flags/#prompt-api-for-gemini-nano-multimodal-input enabled.",
-        "Or allow the cloud fallback below: your messages are then sent to Google's Gemini API.",
+        isCloudAllowed()
+          ? "Or allow the cloud fallback below: your messages are then sent to Google's Gemini API."
+          : "Cloud & internet is off. Allowing the cloud fallback below turns it back on and sends your messages to Google's Gemini API.",
       ];
     }
     return [`Firebase AI Logic could not start: ${lastSetupError || "unknown error"}`];
@@ -491,6 +484,7 @@
     bindSettingsUI,
     listModels,
     selectModel,
+    isCloudAllowed,          // exposed for tests/firebase-checks.mjs
     buildConversationPrompt, // exposed for tests/firebase-checks.mjs
     buildRequest,            // exposed for tests/full-page-checks.mjs
     cloudGenerationConfig,   // exposed for tests/firebase-checks.mjs

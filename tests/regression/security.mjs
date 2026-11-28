@@ -78,3 +78,12 @@ function watchPage({ selectedText = "picked text", rect = { width: 50, height: 1
   page.fire("keyup", { key: "Shift", shiftKey: true });
   assert.equal(page.selections().length, 1, "a real Shift+arrow selection is reported");
 }
+
+// ===================== OPENING THE PANEL MAKES NO NETWORK REQUEST =====================
+// A remote font or script would reach the internet on every open, even in the Nano edition
+// (which promises zero cloud) and with Firebase's "Cloud & internet" switched off.
+{
+  const html = read("sidebar.html");
+  assert.equal(/<(link|script)[^>]+(href|src)="https?:/i.test(html), false, "sidebar.html loads only extension files");
+  assert.equal(/@import\s+url\(\s*["']?https?:/i.test(read("styles/base.css")), false, "styles load no remote fonts");
+}

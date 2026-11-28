@@ -169,6 +169,7 @@ async function assertFailsAndRestores({ onCapture, signal, expected, message }) 
 {
   // Firebase: one inlineData part per image.
   const sandbox = { window: {}, console };
+  vm.runInNewContext(read("providers/firebase-prompt.js"), sandbox); // firebase-backend.js needs it
   vm.runInNewContext(read("providers/firebase-backend.js"), sandbox);
   const { buildRequest } = sandbox.window.MYLOCALAI_PROVIDERS.firebase;
   assert.equal(buildRequest("q", []), "q");

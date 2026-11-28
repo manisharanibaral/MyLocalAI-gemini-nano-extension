@@ -142,6 +142,8 @@ Set up **Gemini Nano**, **Ollama**, or both, using the steps above. When the pan
 | On-device first, cloud Gemini fallback | `PREFER_ON_DEVICE` | Only when on-device can't answer |
 | Cloud Gemini first, on-device fallback | `PREFER_IN_CLOUD` | Yes; on-device only if the cloud call fails |
 
+**Cloud & internet switch.** The first control in that card turns every Firebase cloud feature off in one click. While it is off, every answer runs on-device (`ONLY_ON_DEVICE`) whatever route you picked, cloud models disappear from the model pill, and the panel makes no network request at all. It takes effect at once and keeps your open chat; turning it back on restores the route you had chosen.
+
 Cloud models (free tier only): **Fast**: `gemini-3.5-flash-lite` (default), **Frontier**: `gemini-4-hydrogen`.
 
 > ☁️ **Cloud is opt-in and off by default.** With a cloud route selected, your messages, any selected page text, and any attached image or screenshot are sent to Google's Gemini Developer API through Firebase AI Logic (`firebasevertexai.googleapis.com`). On-device only never sends chat text anywhere.
@@ -186,6 +188,7 @@ Cloud models (free tier only): **Fast**: `gemini-3.5-flash-lite` (default), **Fr
 - **Gemini Nano edition:** has no network permissions at all (site access is only requested, optionally, for tab screenshots). Prompts are processed by Chrome on your device.
 - **Ollama / Mixed editions:** may only connect to `localhost:11434` (your own Ollama).
 - **Firebase Hybrid edition:** may only connect to `firebasevertexai.googleapis.com` (Firebase AI Logic); App Check tokens come from Google's App Check service. With the default **On-device only** route, nothing is sent: prompts are processed by Chrome on your device. If you pick a cloud route, chat text, selected page text and attached images are sent to Google's Gemini Developer API, and Google's terms for that API apply.
+- Opening the panel never contacts the internet: fonts, scripts and styles are all shipped inside the extension (the panel uses your system font).
 - Chat history is stored in the extension's local storage on your computer. Selected page text is read only when you select it (with site access granted, while the panel is open) or use the right-click menu; it stays inside the extension.
 
 ---

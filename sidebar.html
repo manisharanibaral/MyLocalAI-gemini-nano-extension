@@ -5,9 +5,6 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>MyLocalAI — Gemini Nano Chat</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="styles/base.css" />
   <link rel="stylesheet" href="styles/settings.css" />
   <link rel="stylesheet" href="styles/history-welcome.css" />
@@ -24,22 +21,10 @@
   <div id="status-overlay" class="status-overlay hidden">
     <div class="status-card">
       <div class="status-icon-wrap">
-        <svg id="status-spinner" class="status-spinner" viewBox="0 0 50 50">
-          <circle cx="25" cy="25" r="20" fill="none" stroke-width="4" stroke="url(#grad)" stroke-linecap="round"
-            stroke-dasharray="90 150" stroke-dashoffset="0" />
-          <defs>
-            <linearGradient id="grad" x1="0%" y1="0%" x2="100%" y2="0%">
-              <stop offset="0%" stop-color="#8B5CF6" />
-              <stop offset="100%" stop-color="#06B6D4" />
-            </linearGradient>
-          </defs>
-        </svg>
+        <svg id="status-spinner" class="status-spinner" viewBox="0 0 50 50"><circle cx="25" cy="25" r="20" fill="none" stroke-width="4" stroke="url(#grad)" stroke-linecap="round"
+            stroke-dasharray="90 150" stroke-dashoffset="0" /><defs><linearGradient id="grad" x1="0%" y1="0%" x2="100%" y2="0%"><stop offset="0%" stop-color="#8B5CF6" /><stop offset="100%" stop-color="#06B6D4" /></linearGradient></defs></svg>
         <svg id="status-error-icon" class="status-error-icon hidden" viewBox="0 0 24 24" fill="none" stroke="#F87171"
-          stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <circle cx="12" cy="12" r="10" />
-          <line x1="15" y1="9" x2="9" y2="15" />
-          <line x1="9" y1="9" x2="15" y2="15" />
-        </svg>
+          stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10" /><line x1="15" y1="9" x2="9" y2="15" /><line x1="9" y1="9" x2="15" y2="15" /></svg>
       </div>
       <h2 id="status-title" class="status-title">Initializing…</h2>
       <p id="status-message" class="status-message">Looking for an available AI backend</p>
@@ -78,22 +63,13 @@
       </div>
       <div class="header-actions">
         <button id="btn-clear" class="icon-btn" title="New chat" aria-label="New chat">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
-            stroke-linejoin="round">
-            <path d="M12 20h9" />
-            <path d="M16.5 3.5a2.121 2.121 0 013 3L7 19l-4 1 1-4L16.5 3.5z" />
-          </svg>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9" /><path d="M16.5 3.5a2.121 2.121 0 013 3L7 19l-4 1 1-4L16.5 3.5z" /></svg>
         </button>
         <button id="btn-history" class="icon-btn" title="Chat History" aria-label="Chat History">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
-            stroke-linejoin="round">
-            <circle cx="12" cy="12" r="10"></circle>
-            <polyline points="12 6 12 12 16 14"></polyline>
-          </svg>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
         </button>
         <button id="btn-settings" class="icon-btn" title="Settings" aria-label="Settings">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
-            stroke-linejoin="round">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <circle cx="12" cy="12" r="3" />
             <path
               d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z" />
@@ -115,20 +91,11 @@
               <label class="settings-label" for="saved-prompts">Saved prompts</label>
               <button id="btn-save-prompt" class="icon-btn icon-btn-sm" title="Save current prompt"
                 aria-label="Save current prompt">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
-                  stroke-linejoin="round">
-                  <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path>
-                  <polyline points="17 21 17 13 7 13 7 21"></polyline>
-                  <polyline points="7 3 7 8 15 8"></polyline>
-                </svg>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path><polyline points="17 21 17 13 7 13 7 21"></polyline><polyline points="7 3 7 8 15 8"></polyline></svg>
               </button>
               <button id="btn-delete-prompt" class="icon-btn icon-btn-sm" title="Delete the selected saved prompt"
                 aria-label="Delete the selected saved prompt">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
-                  stroke-linejoin="round">
-                  <polyline points="3 6 5 6 21 6"></polyline>
-                  <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
-                </svg>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
               </button>
             </div>
             <div class="select-wrap">
@@ -240,6 +207,15 @@
         <!-- Firebase hybrid edition only: firebase-backend.js un-hides and wires this card. -->
         <section id="firebase-settings" class="settings-card hidden" aria-labelledby="firebase-settings-label">
           <h2 id="firebase-settings-label" class="settings-card-title">Firebase AI Logic · hybrid</h2>
+          <!-- One switch for everything that can reach the internet; firebase-backend.js wires it. -->
+          <label class="settings-switch" for="firebase-cloud-switch">
+            <span class="settings-switch-text">
+              <span class="settings-label">Cloud &amp; internet</span>
+              <span class="settings-hint">Off: Firebase cloud is never called, so nothing leaves this device. Answers use on-device Gemini Nano only.</span>
+            </span>
+            <input id="firebase-cloud-switch" type="checkbox" role="switch" checked />
+            <span class="switch-track" aria-hidden="true"></span>
+          </label>
           <div class="settings-group">
             <label class="settings-label" for="firebase-route">Where answers run</label>
             <div class="select-wrap">
@@ -321,25 +297,14 @@
       <!-- CONTEXT CARD -->
       <div id="context-card" class="context-card hidden">
         <span class="context-icon">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
-            stroke-linejoin="round">
-            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
-            <polyline points="14 2 14 8 20 8"></polyline>
-            <line x1="16" y1="13" x2="8" y2="13"></line>
-            <line x1="16" y1="17" x2="8" y2="17"></line>
-            <polyline points="10 9 9 9 8 9"></polyline>
-          </svg>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
         </span>
         <span class="context-body">
           <span id="context-text" class="context-text"></span>
           <span id="context-note" class="context-note hidden" role="status"></span>
         </span>
         <button id="btn-clear-context" class="btn-clear-context" title="Clear context" aria-label="Clear context">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
-            stroke-linejoin="round">
-            <line x1="18" y1="6" x2="6" y2="18"></line>
-            <line x1="6" y1="6" x2="18" y2="18"></line>
-          </svg>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
         </button>
       </div>
 
@@ -348,11 +313,7 @@
         <span class="context-text">Add a screenshot of this page to your message automatically?</span>
         <button id="btn-allow-screenshots" class="btn-card-action" type="button">Allow</button>
         <button id="btn-dismiss-screenshot-access" class="btn-clear-context" title="Not now" aria-label="Not now">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
-            stroke-linejoin="round">
-            <line x1="18" y1="6" x2="6" y2="18"></line>
-            <line x1="6" y1="6" x2="18" y2="18"></line>
-          </svg>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
         </button>
       </div>
 
@@ -365,11 +326,7 @@
         <span class="context-text img-preview-text" aria-live="polite">Attached image</span>
         <button id="btn-stop-capture" class="btn-card-action" type="button">Stop &amp; save</button>
         <button id="btn-clear-image" class="btn-clear-context" title="Clear image" aria-label="Clear image">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
-            stroke-linejoin="round">
-            <line x1="18" y1="6" x2="6" y2="18"></line>
-            <line x1="6" y1="6" x2="18" y2="18"></line>
-          </svg>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
         </button>
       </div>
 
@@ -378,38 +335,19 @@
         <div id="attach-wrap" class="attach-wrap">
           <button id="btn-attach" class="icon-btn icon-btn-input" title="Add image" aria-label="Add image"
             aria-haspopup="menu" aria-expanded="false" aria-controls="attach-menu">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
-              stroke-linejoin="round">
-              <line x1="12" y1="5" x2="12" y2="19"></line>
-              <line x1="5" y1="12" x2="19" y2="12"></line>
-            </svg>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
           </button>
           <div id="attach-menu" class="attach-menu hidden" role="menu">
             <button id="btn-upload-img" class="attach-menu-item" role="menuitem">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
-                stroke-linejoin="round">
-                <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
-                <circle cx="8.5" cy="8.5" r="1.5"></circle>
-                <polyline points="21 15 16 10 5 21"></polyline>
-              </svg>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><circle cx="8.5" cy="8.5" r="1.5"></circle><polyline points="21 15 16 10 5 21"></polyline></svg>
               Upload image
             </button>
             <button id="btn-screenshot-tab" class="attach-menu-item" role="menuitem">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
-                stroke-linejoin="round">
-                <rect x="2" y="4" width="20" height="14" rx="2"></rect>
-                <line x1="8" y1="21" x2="16" y2="21"></line>
-                <line x1="12" y1="18" x2="12" y2="21"></line>
-              </svg>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="14" rx="2"></rect><line x1="8" y1="21" x2="16" y2="21"></line><line x1="12" y1="18" x2="12" y2="21"></line></svg>
               Screenshot this tab
             </button>
             <button id="btn-screenshot-page" class="attach-menu-item" role="menuitem">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
-                stroke-linejoin="round">
-                <rect x="6" y="2" width="12" height="20" rx="2"></rect>
-                <line x1="6" y1="9" x2="18" y2="9"></line>
-                <line x1="6" y1="15" x2="18" y2="15"></line>
-              </svg>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="2" width="12" height="20" rx="2"></rect><line x1="6" y1="9" x2="18" y2="9"></line><line x1="6" y1="15" x2="18" y2="15"></line></svg>
               Screenshot whole page
             </button>
           </div>
@@ -423,23 +361,15 @@
             aria-expanded="false" aria-controls="model-menu">
             <span id="model-pill-label" class="model-pill-label">Model</span>
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
-              stroke-linejoin="round" class="model-pill-chevron">
-              <polyline points="6 9 12 15 18 9"></polyline>
-            </svg>
+              stroke-linejoin="round" class="model-pill-chevron"><polyline points="6 9 12 15 18 9"></polyline></svg>
           </button>
           <div id="model-menu" class="model-menu hidden" role="menu" aria-label="Choose a model"></div>
         </div>
         <button id="btn-send" class="btn-send" title="Send" aria-label="Send message" disabled>
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
-            stroke-linejoin="round">
-            <line x1="22" y1="2" x2="11" y2="13" />
-            <polygon points="22 2 15 22 11 13 2 9 22 2" />
-          </svg>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13" /><polygon points="22 2 15 22 11 13 2 9 22 2" /></svg>
         </button>
         <button id="btn-stop" class="btn-stop hidden" title="Stop generating" aria-label="Stop generating">
-          <svg viewBox="0 0 24 24" fill="currentColor">
-            <rect x="6" y="6" width="12" height="12" rx="2" />
-          </svg>
+          <svg viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="2" /></svg>
         </button>
       </div>
       <p class="input-hint"><span id="backend-hint">100% on-device</span> · <span id="token-info"
@@ -464,6 +394,7 @@
   <script src="vendor/marked.umd.js"></script>
   <script src="config.js"></script>
   <!-- Registers optional providers; loads the Firebase SDK only when config.js enables "firebase". -->
+  <script src="providers/firebase-prompt.js"></script>
   <script src="providers/firebase-backend.js"></script>
   <script src="features/model-switcher.js"></script>
   <script src="features/capture-indicator.js"></script>

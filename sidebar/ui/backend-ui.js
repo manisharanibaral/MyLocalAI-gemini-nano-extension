@@ -10,7 +10,7 @@ function applyEditionUI() {
 
   if (externalProvider) {
     document.title = externalProvider.describe().title;
-    externalProvider.bindSettingsUI?.();
+    externalProvider.bindSettingsUI?.({ onSettingsChanged: reloadExternalProvider });
   }
   else if (nanoEnabled && !ollamaEnabled) document.title = "MyLocalAI — Gemini Nano";
   else if (ollamaEnabled && !nanoEnabled) document.title = "MyLocalAI — Ollama";

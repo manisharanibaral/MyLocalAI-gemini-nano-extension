@@ -28,6 +28,23 @@ async function initExternalProvider() {
   isModelUnloaded = false;
 }
 
+// A provider setting that changes where answers run (e.g. Firebase's "Cloud & internet"
+// switch) takes effect at once. Unlike Apply & Restart, the open chat stays.
+async function reloadExternalProvider() {
+  if (isGenerating) stopGeneration();
+  try {
+    await initExternalProvider();
+    activeBackend = externalProvider.id;
+    hideStatus();
+  } catch (err) {
+    console.warn(`[MyLocalAI] ${externalProvider.id} could not restart:`, err.message);
+    activeBackend = null;
+    showStatus("error", errorTitle(), getErrorMessage());
+  }
+  updateBackendUI();
+  updateTokenInfo();
+}
+
 // chatHistory already ends with the message being answered (sendMessage pushed it).
 async function streamProvider(aiBubble, images) {
   const answer = await externalProvider.stream({

@@ -13,6 +13,13 @@ const read = (path) => readFileSync(new URL(path, root), "utf8");
 const exists = (path) => existsSync(new URL(path, root));
 
 const backendJs = read("providers/firebase-backend.js");
+const promptJs = read("providers/firebase-prompt.js");
+// firebase-backend.js uses the prompt builder that sidebar.html loads just before it.
+const loadProvider = (sandbox) => {
+  vm.runInNewContext(promptJs, sandbox);
+  vm.runInNewContext(backendJs, sandbox);
+  return sandbox.window.MYLOCALAI_PROVIDERS.firebase;
+};
 
 // ===== New files exist; the extension root stays free of package.json =====
 for (const file of ["providers/firebase-backend.js", "firebase-settings.example.js", "vendor/firebase-ai.js",
@@ -57,7 +64,7 @@ if (canZip) {
 } else {
   console.warn("! zip/unzip not installed: the zip contents were not checked");
 }
-for (const file of ["providers/firebase-backend.js", "vendor/firebase-ai.js", "sidebar.html", ...sidebarPaths, "config.js", "manifest.json"]) {
+for (const file of ["providers/firebase-backend.js", "providers/firebase-prompt.js", "vendor/firebase-ai.js", "sidebar.html", ...sidebarPaths, "config.js", "manifest.json"]) {
   assert.ok(exists(`${dist}${file}`), `dist should ship ${file}`);
 }
 {
@@ -141,7 +148,7 @@ assert.ok(sidebarJs.indexOf("function streamOllama(") < sidebarJs.indexOf("funct
 // ===== Provider interface and the multi-turn → single-prompt builder =====
 {
   const sandbox = { window: {}, console };
-  vm.runInNewContext(backendJs, sandbox);
+  loadProvider(sandbox);
   const provider = sandbox.window.MYLOCALAI_PROVIDERS.firebase;
   for (const method of ["init", "stream", "unload", "describe", "supportsImages", "statusLine", "errorTitle", "helpLines", "bindSettingsUI",
     "listModels", "selectModel"]) {
@@ -174,7 +181,7 @@ assert.ok(sidebarJs.indexOf("function streamOllama(") < sidebarJs.indexOf("funct
 // ===== "Answer length": the cloud route gets maxOutputTokens only when there is a cap =====
 {
   const sandbox = { window: {}, console };
-  vm.runInNewContext(backendJs, sandbox);
+  loadProvider(sandbox);
   const { cloudGenerationConfig } = sandbox.window.MYLOCALAI_PROVIDERS.firebase;
   assert.deepEqual({ ...cloudGenerationConfig({ temperature: 0.5, topK: 3, maxOutputTokens: 400 }) },
     { temperature: 0.5, topK: 3, maxOutputTokens: 400 }, "Short/Normal cap the paid cloud answer");
@@ -194,7 +201,7 @@ assert.ok(sidebarJs.indexOf("function streamOllama(") < sidebarJs.indexOf("funct
     localStorage: { getItem: (key) => stored.get(key) ?? null, setItem: (key, value) => stored.set(key, value) },
     document: { getElementById: (id) => ({ "firebase-route": routeSelect, "firebase-cloud-model": modelSelect })[id] ?? null },
   };
-  vm.runInNewContext(backendJs, sandbox);
+  loadProvider(sandbox);
   const provider = sandbox.window.MYLOCALAI_PROVIDERS.firebase;
 
   let listing = provider.listModels();
@@ -231,6 +238,51 @@ assert.ok(sidebarJs.indexOf("function streamOllama(") < sidebarJs.indexOf("funct
   assert.throws(() => provider.selectModel("nonsense"), /Unknown model/);
   assert.deepEqual([...stored], [...before], "an unknown model changes nothing");
 }
+
+// ===== "Cloud & internet" switch: off means on-device only, whatever was chosen before =====
+{
+  const stored = new Map([["firebaseRoute", "prefer-cloud"], ["firebaseCloudModel", "frontier"]]);
+  const routeSelect = { value: "", disabled: false, addEventListener() { } };
+  const modelSelect = { value: "", disabled: false, addEventListener() { } };
+  const cloudSwitch = { checked: true, listeners: {}, addEventListener(type, fn) { this.listeners[type] = fn; } };
+  const card = { classList: { remove() { } } };
+  const elements = { "firebase-settings": card, "firebase-route": routeSelect, "firebase-cloud-model": modelSelect, "firebase-cloud-switch": cloudSwitch };
+  const sandbox = {
+    window: {},
+    console,
+    localStorage: { getItem: (key) => stored.get(key) ?? null, setItem: (key, value) => stored.set(key, value) },
+    document: { getElementById: (id) => elements[id] ?? null },
+  };
+  const provider = loadProvider(sandbox);
+  assert.equal(provider.isCloudAllowed(), true, "the switch is on by default, so existing choices keep working");
+
+  let restarts = 0;
+  provider.bindSettingsUI({ onSettingsChanged: () => { restarts += 1; } });
+  cloudSwitch.checked = false;
+  cloudSwitch.listeners.change({ target: cloudSwitch });
+  assert.equal(stored.get("firebaseCloudSwitch"), "off", "the switch is saved");
+  assert.equal(restarts, 1, "turning it off rebuilds the model at once");
+  assert.equal(provider.isCloudAllowed(), false);
+  assert.deepEqual([...provider.listModels().options.map((o) => o.id)], ["device"], "no cloud model is offered");
+  assert.equal(provider.listModels().currentId, "device", "a saved cloud route is overridden");
+  assert.throws(() => provider.selectModel("cloud:fast"), /Cloud & internet is off/, "cloud models can't be picked");
+  assert.equal(routeSelect.value, "device", "the settings show the route in effect");
+  assert.equal(routeSelect.disabled, true, "and can't be changed while off");
+  assert.equal(modelSelect.disabled, true);
+  assert.equal(provider.describe().usesCloud, false, "the sidebar may now say answers stay on the device");
+  assert.match(provider.describe().badge, /Offline/);
+  assert.equal(stored.get("firebaseRoute"), "prefer-cloud", "the earlier choice is remembered for when it's turned on");
+
+  cloudSwitch.checked = true;
+  cloudSwitch.listeners.change({ target: cloudSwitch });
+  assert.equal(provider.listModels().currentId, "cloud:frontier", "turning it on restores the earlier choice");
+  assert.equal(routeSelect.disabled, false);
+  assert.equal(restarts, 2);
+}
+assert.match(sidebarHtml, /<input id="firebase-cloud-switch" type="checkbox" role="switch" checked \/>/,
+  "the switch is a real, labelled checkbox");
+assert.match(sidebarJs, /bindSettingsUI\?\.\(\{ onSettingsChanged: reloadExternalProvider \}\)/,
+  "the sidebar applies the switch without Apply & Restart");
 
 // ===== Pre-commit runs this file too =====
 assert.match(read(".githooks/pre-commit"), /node tests\/firebase-checks\.mjs/, "the pre-commit hook should run firebase checks");
