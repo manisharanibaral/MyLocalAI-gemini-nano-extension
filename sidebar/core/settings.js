@@ -65,10 +65,11 @@ function loadSettings() {
 
 // The applied prompt (or the default) plus the answer-length hint. The hint is added to
 // custom prompts too, because the length setting applies whatever prompt is in use.
+// Saved memories come last; Gemini Nano picks up a change in its next chat (see resetNanoChat).
 function getSystemPrompt() {
   const prompt = appliedSystemPrompt.trim() || DEFAULT_SYSTEM_PROMPT;
   const { hint } = getAnswerLength();
-  return hint ? `${prompt}\n\n${hint}` : prompt;
+  return [prompt, hint, memoryPromptBlock()].filter(Boolean).join("\n\n");
 }
 
 function getAnswerLength() {

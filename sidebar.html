@@ -8,6 +8,7 @@
   <link rel="stylesheet" href="styles/base.css" />
   <link rel="stylesheet" href="styles/settings.css" />
   <link rel="stylesheet" href="styles/history-welcome.css" />
+  <link rel="stylesheet" href="styles/memory.css" />
   <link rel="stylesheet" href="styles/messages.css" />
   <link rel="stylesheet" href="styles/markdown.css" />
   <link rel="stylesheet" href="styles/input-bar.css" />
@@ -67,6 +68,9 @@
         </button>
         <button id="btn-history" class="icon-btn" title="Chat History" aria-label="Chat History">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
+        </button>
+        <button id="btn-memory" class="icon-btn" title="Memory" aria-label="Memory" aria-controls="memory-panel">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18h6" /><path d="M10 22h4" /><path d="M12 2a7 7 0 0 0-4 12.7c.6.5 1 1.3 1 2.1V17h6v-.2c0-.8.4-1.6 1-2.1A7 7 0 0 0 12 2z" /></svg>
         </button>
         <button id="btn-settings" class="icon-btn" title="Settings" aria-label="Settings">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -255,6 +259,37 @@
       </div>
     </div>
 
+    <!-- MEMORY PANEL: what MyLocalAI remembers about the user; sidebar/ui/memory-panel.js fills it. -->
+    <div id="memory-panel" class="settings-panel memory-panel hidden" role="region" aria-labelledby="memory-panel-title">
+      <div class="memory-header">
+        <div class="memory-header-text">
+          <h2 id="memory-panel-title" class="settings-section-label memory-title">Memory</h2>
+          <span id="memory-usage" class="memory-usage"></span>
+        </div>
+        <button id="btn-add-memory" class="btn-card-action" type="button">+ Add</button>
+      </div>
+      <div class="memory-meter" aria-hidden="true"><div id="memory-meter-fill" class="memory-meter-fill"></div></div>
+      <p id="memory-limit-note" class="memory-limit-note hidden" role="status"></p>
+      <label class="settings-switch" for="memory-learning">
+        <span class="settings-switch-text">
+          <span class="settings-label">Learn about me</span>
+          <span class="settings-hint">After a reply, the model may save, update or forget one fact from what you typed. Selected text and pages are never used.</span>
+        </span>
+        <input id="memory-learning" type="checkbox" role="switch" checked />
+        <span class="switch-track" aria-hidden="true"></span>
+      </label>
+      <form id="memory-form" class="memory-form hidden">
+        <input id="memory-title" class="settings-input" type="text" maxlength="60" placeholder="Title, e.g. Job" aria-label="Memory title" />
+        <textarea id="memory-description" class="settings-textarea" rows="2" maxlength="240"
+          placeholder="e.g. Works as a nurse on night shifts." aria-label="Memory description"></textarea>
+        <p id="memory-form-error" class="memory-form-error" role="alert"></p>
+        <div class="memory-form-actions">
+          <button id="btn-cancel-memory" class="btn-viewer" type="button">Cancel</button>
+          <button class="btn-card-action" type="submit">Save</button>
+        </div>
+      </form>
+      <div id="memory-list" class="memory-list" role="list" aria-label="Saved memories"></div>
+    </div>
     <!-- WELCOME SCREEN -->
     <div id="welcome-screen" class="welcome-screen">
       <div class="welcome-glow"></div>
@@ -412,7 +447,10 @@
   <script src="sidebar/backends/ollama.js"></script>
   <script src="sidebar/backends/ollama-request.js"></script>
   <script src="sidebar/backends/provider-hook.js"></script>
+  <script src="sidebar/backends/structured-output.js"></script>
   <script src="sidebar/backends/lifecycle.js"></script>
+  <script src="sidebar/memory/memory-store.js"></script>
+  <script src="sidebar/memory/memory-tool.js"></script>
   <script src="sidebar/chat/send-message.js"></script>
   <script src="sidebar/ui/backend-ui.js"></script>
   <script src="sidebar/ui/switch-model.js"></script>
@@ -421,6 +459,7 @@
   <script src="sidebar/ui/rendering.js"></script>
   <script src="sidebar/ui/status.js"></script>
   <script src="sidebar/ui/prompt-bar.js"></script>
+  <script src="sidebar/ui/memory-panel.js"></script>
   <script src="sidebar/attachments/images.js"></script>
   <script src="sidebar/attachments/image-viewer.js"></script>
   <script src="sidebar/attachments/tab-screenshots.js"></script>

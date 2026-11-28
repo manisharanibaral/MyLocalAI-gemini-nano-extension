@@ -90,7 +90,7 @@ export function bootPanel({ globals = {}, storage = {} } = {}) {
     },
     DOMParser: class { parseFromString() { return { body: { childNodes: [] }, documentElement: new FakeElement() }; } },
     requestAnimationFrame: (frame) => setImmediate(frame),
-    setTimeout, clearTimeout, AbortController, TextDecoder, Blob, URL,
+    setTimeout, clearTimeout, AbortController, AbortSignal, TextDecoder, Blob, URL,
     ...globals,
   });
   context.window = context;

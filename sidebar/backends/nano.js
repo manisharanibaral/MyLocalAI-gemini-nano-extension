@@ -120,6 +120,7 @@ async function initNanoSession() {
 
   isCreating = false;
   nanoBaseSession = created;
+  nanoBaseSystemPrompt = systemText;
   session = await cloneNanoBaseSession();
   isModelUnloaded = false;
   await applyNanoParamLimits(lm);
@@ -159,7 +160,9 @@ async function resetNanoChat() {
   // would pull the model back into RAM with no idle timer running, so it would never be
   // freed again; the next send reloads it through ensureModelLoaded() instead.
   if (isModelUnloaded) return;
-  if (!nanoBaseSession) {
+  // A memory saved since the base session was made changed the system prompt, and a session's
+  // system prompt is fixed, so the new chat needs a new base session.
+  if (!nanoBaseSession || nanoBaseSystemPrompt !== getSystemPrompt()) {
     await initNanoSession();
     return;
   }

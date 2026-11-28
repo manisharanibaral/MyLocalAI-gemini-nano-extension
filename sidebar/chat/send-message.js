@@ -102,6 +102,8 @@ async function sendMessageNow(text) {
       return stream.finally(() => group.markDone(i));
     }));
     await recordResponses(group, results, chat);
+    // Not awaited: learning runs after the reply and must never hold up the next message.
+    if (text.trim()) learnFromMessage(text.trim(), chat.id);
   } catch (err) {
     // Only reached if setting up the reply fails; per-answer errors are shown in their tab.
     console.error("[MyLocalAI] Could not start the reply:", err);

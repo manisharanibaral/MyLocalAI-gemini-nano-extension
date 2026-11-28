@@ -7,6 +7,7 @@ let session = null;        // Gemini Nano session for the current chat (a clone 
 // Chrome's guidance: create one session holding only the system prompt, then clone() it per chat.
 // Cloning is much faster than create(), so "New chat" no longer reloads the model.
 let nanoBaseSession = null;
+let nanoBaseSystemPrompt = ""; // the system prompt nanoBaseSession was created with
 let nanoContextTrimmed = false; // set when Nano dropped old turns to fit its context window
 let abortController = null;
 let isGenerating = false;

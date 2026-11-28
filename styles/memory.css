@@ -1,0 +1,114 @@
+/* ---------- MEMORY PANEL ---------- */
+/* Cards flow in two staggered columns (CSS columns), so short and long memories pack tightly. */
+.memory-panel { max-height: 72vh; overflow-y: auto; }
+
+.memory-header { display: flex; align-items: center; gap: 10px; }
+.memory-header-text { display: flex; flex-direction: column; flex: 1; min-width: 0; }
+.memory-title { margin: 0; }
+.memory-usage { font-size: 11px; color: var(--text-secondary); }
+.btn-card-action:disabled { opacity: 0.45; cursor: not-allowed; filter: none; }
+
+.memory-meter {
+  height: 4px;
+  border-radius: 999px;
+  background: var(--bg-tertiary);
+  overflow: hidden;
+}
+.memory-meter-fill {
+  height: 100%;
+  width: 0;
+  background: var(--accent-grad);
+  transition: width var(--duration) var(--ease-out);
+}
+.memory-full .memory-meter-fill { background: hsl(0, 72%, 55%); }
+.memory-limit-note {
+  font-size: 12px;
+  color: hsl(0, 80%, 72%);
+}
+
+.memory-form {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid var(--border-focus);
+  border-radius: var(--radius-md);
+  background: var(--bg-tertiary);
+}
+.memory-form-error { font-size: 11px; color: hsl(0, 80%, 72%); min-height: 0; }
+.memory-form-error:empty { display: none; }
+.memory-form-actions { display: flex; justify-content: flex-end; gap: 8px; }
+
+.memory-list { column-count: 2; column-gap: 10px; }
+.memory-empty { column-span: all; }
+
+.memory-card {
+  position: relative;
+  break-inside: avoid;
+  margin-bottom: 10px;
+  border-radius: 22px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-subtle);
+  transition: border-color var(--duration) var(--ease-out);
+}
+.memory-card:hover, .memory-card:focus-within { border-color: var(--border-focus); }
+
+.memory-card-open {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  width: 100%;
+  padding: 14px 14px 16px;
+  border: none;
+  background: none;
+  color: inherit;
+  font-family: var(--font);
+  text-align: left;
+  cursor: pointer;
+  border-radius: inherit;
+}
+.memory-card-open:focus-visible { outline: 2px solid var(--border-focus); outline-offset: -2px; }
+.memory-card-date { font-size: 10.5px; font-weight: 600; color: var(--text-muted); }
+.memory-card-title {
+  font-size: 16px;
+  font-weight: 700;
+  line-height: 1.2;
+  color: var(--text-primary);
+  overflow-wrap: anywhere;
+  padding-right: 14px; /* room for the delete button */
+}
+.memory-card-description {
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--text-secondary);
+  overflow-wrap: anywhere;
+  display: -webkit-box;
+  -webkit-line-clamp: 5;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.memory-card-delete {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 22px;
+  height: 22px;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+  opacity: 0.6;
+}
+.memory-card:hover .memory-card-delete,
+.memory-card-delete:focus-visible { opacity: 1; }
+.memory-card-delete:hover { color: hsl(0, 72%, 60%); background: hsla(0, 72%, 55%, 0.12); }
+.memory-card-delete:focus-visible { outline: 2px solid var(--border-focus); }
+
+/* Narrow side panels get one column so titles stay readable. */
+@media (max-width: 300px) {
+  .memory-list { column-count: 1; }
+}

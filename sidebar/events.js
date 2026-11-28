@@ -6,6 +6,7 @@ function setupEventListeners() {
   if (listenersInitialized) return;
   listenersInitialized = true;
   setupModelSwitcher();
+  setupMemoryPanel();
 
   const unpin = () => { isAutoScrollEnabled = false; };
   messagesEl.addEventListener("wheel", (e) => { if (e.deltaY < 0) unpin(); }, { passive: true });
@@ -115,6 +116,7 @@ function setupEventListeners() {
 
   btnHistory.addEventListener("click", () => {
     settingsPanel.classList.add("hidden");
+    memoryPanel.classList.add("hidden");
     historyPanel.classList.toggle("hidden");
     if (!historyPanel.classList.contains("hidden")) {
       renderHistoryList();
@@ -188,6 +190,7 @@ function setupEventListeners() {
 
   btnSettings.addEventListener("click", () => {
     historyPanel.classList.add("hidden");
+    memoryPanel.classList.add("hidden");
     settingsPanel.classList.toggle("hidden");
     if (ollamaEnabled && !settingsPanel.classList.contains("hidden")) {
       validateSettingsModel();

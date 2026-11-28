@@ -104,6 +104,7 @@ await import("./panel/ollama.mjs");
 await import("./panel/settings.mjs");
 await import("./panel/context-and-length.mjs");
 await import("./panel/context-budget.mjs");
+await import("./panel/memory.mjs");
 await import("./panel/selected-text.mjs");
 
 console.log("Structure checks passed");

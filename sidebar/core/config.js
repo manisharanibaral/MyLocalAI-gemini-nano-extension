@@ -96,3 +96,13 @@ const DEFAULT_SYSTEM_PROMPT = `You are MyLocalAI, a helpful, accurate assistant.
 - If the request is unclear, ask one short question.
 - Reply in the user's language.
 - Use Markdown: ## headings for long answers, numbered steps, bullet lists, tables for comparisons, fenced code with a language tag.`;
+
+// ===================== MEMORY (facts the user lets MyLocalAI keep) =====================
+// Every memory is added to the system prompt, so these caps keep it small enough for Gemini
+// Nano's context window: at most ~2,000 characters (~650 tokens) however many there are.
+const MAX_MEMORIES = 20;
+const MAX_MEMORY_TOTAL_CHARS = 2000;
+const MAX_MEMORY_TITLE_CHARS = 60;
+const MAX_MEMORY_DESCRIPTION_CHARS = 240;
+// Only this much of a message is shown to the memory tool; long pastes are rarely about the user.
+const MAX_MEMORY_INPUT_CHARS = 1000;
