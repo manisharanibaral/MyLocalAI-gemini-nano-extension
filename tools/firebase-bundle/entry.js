@@ -7,6 +7,9 @@ import { getAI, getGenerativeModel, GoogleAIBackend, InferenceMode, InferenceSou
 // (it is a remote script), so firebase-backend.js uses a registered debug token plus a
 // CustomProvider placeholder; see README "Firebase hybrid edition → App Check".
 import { initializeAppCheck, CustomProvider } from "firebase/app-check";
+// Remote Config holds the cloud model names, so a retired model can be swapped without a
+// new extension release (Firebase AI Logic production checklist).
+import { getRemoteConfig, fetchAndActivate, getValue } from "firebase/remote-config";
 
 window.MyLocalAIFirebase = {
   initializeApp,
@@ -17,4 +20,7 @@ window.MyLocalAIFirebase = {
   InferenceSource,
   initializeAppCheck,
   CustomProvider,
+  getRemoteConfig,
+  fetchAndActivate,
+  getValue,
 };

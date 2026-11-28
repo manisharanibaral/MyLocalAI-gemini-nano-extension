@@ -20,25 +20,6 @@
   const SDK_PATH = "vendor/firebase-ai.js";
   const SETTINGS_PATH = "firebase-settings.local.js";
 
-  // Free-tier cloud models only (hackathon constraint: no Blaze-plan or retiring models).
-  const CLOUD_MODELS = {
-    fast: { id: "gemini-3.5-flash-lite", label: "Fast · gemini-3.5-flash-lite" },
-    frontier: { id: "gemini-4-hydrogen", label: "Frontier · gemini-4-hydrogen" },
-  };
-  const DEFAULT_CLOUD_MODEL = "fast";
-
-  // Where answers run. "device" is the default and the only route that keeps chat text local.
-  const ROUTES = {
-    device: { mode: "ONLY_ON_DEVICE", usesCloud: false, badge: "On-device only" },
-    "prefer-device": { mode: "PREFER_ON_DEVICE", usesCloud: true, badge: "On-device · cloud fallback" },
-    "prefer-cloud": { mode: "PREFER_IN_CLOUD", usesCloud: true, badge: "Cloud first · on-device fallback" },
-  };
-  const DEFAULT_ROUTE = "device";
-
-  const STORAGE_KEYS = { route: "firebaseRoute", cloudModel: "firebaseCloudModel", cloudSwitch: "firebaseCloudSwitch" };
-  // "Cloud & internet" switch. Off overrides every cloud choice without forgetting it.
-  const CLOUD_SWITCH = { on: true, off: false };
-
   const TEXT_IO = { expectedInputs: [{ type: "text", languages: ["en"] }], expectedOutputs: [{ type: "text", languages: ["en"] }] };
   const VISION_IO = {
     expectedInputs: [{ type: "text", languages: ["en"] }, { type: "image", languages: ["en"] }],
@@ -46,89 +27,24 @@
   };
 
   // ===================== STATE =====================
-  let firebaseServices = null;      // { sdk, ai } — created once per page (App Check can't be re-initialized)
+  let firebaseServices = null;      // { sdk, app, ai } — created once per page (App Check can't be re-initialized)
   let deviceModel = { status: "unknown", vision: false, limits: null };
   let cachedModel = null;           // { key, model } — reused so the SDK keeps a single on-device session
   let answerQueue = Promise.resolve();
   let lastInferenceSource = "";     // an sdk.InferenceSource value, for the footer label
   let lastSetupError = "";
-  let settingsBound = false;        // applyEditionUI runs on every restart; bind listeners once
 
-  // ===================== SETTINGS (owned by this file) =====================
-  const $ = (id) => document.getElementById(id);
+  // ===================== SETTINGS =====================
+  // In providers/firebase-settings.js, which sidebar.html loads first.
+  const {
+    ROUTES, CLOUD_MODELS, isCloudAllowed, currentRoute, currentCloudModel, applyCloudModelNames,
+    bindSettingsUI, setCloudOptInVisible, needsLaunchChoice, askLaunchChoice, listModels, selectModel,
+  } = window.MyLocalAIFirebaseSettings;
 
-  function readStored(key, allowed, fallback) {
-    try {
-      const value = localStorage.getItem(key);
-      return value !== null && Object.hasOwn(allowed, value) ? value : fallback;
-    } catch (_) {
-      return fallback;
-    }
-  }
-
-  function storeSetting(key, value) {
-    try { localStorage.setItem(key, value); } catch (e) { console.warn("[MyLocalAI] Could not save Firebase setting", e); }
-  }
-
-  function isCloudAllowed() { return readStored(STORAGE_KEYS.cloudSwitch, CLOUD_SWITCH, "on") === "on"; }
-  // With the switch off, every request is on-device only, so no chat text can reach the cloud.
-  function currentRoute() { return isCloudAllowed() ? readStored(STORAGE_KEYS.route, ROUTES, DEFAULT_ROUTE) : DEFAULT_ROUTE; }
-  function currentCloudModel() { return readStored(STORAGE_KEYS.cloudModel, CLOUD_MODELS, DEFAULT_CLOUD_MODEL); }
-
-  // Fills and wires the "Firebase AI Logic" settings card and the overlay's cloud opt-in button.
-  // onSettingsChanged: the sidebar's way to rebuild the model (and its UI) right away.
-  function bindSettingsUI({ onSettingsChanged } = {}) {
-    const card = $("firebase-settings");
-    const routeSelect = $("firebase-route");
-    const modelSelect = $("firebase-cloud-model");
-    if (settingsBound || !card || !routeSelect || !modelSelect) return;
-    settingsBound = true;
-    card.classList.remove("hidden");
-    syncSettingsControls();
-
-    $("firebase-cloud-switch")?.addEventListener("change", (event) => {
-      setCloudAllowed(event.target.checked);
-      onSettingsChanged?.();
-    });
-
-    // Saved immediately; "Apply & Restart Session" (or Retry) rebuilds the model with them.
-    routeSelect.addEventListener("change", () => { storeSetting(STORAGE_KEYS.route, routeSelect.value); syncSettingsControls(); });
-    modelSelect.addEventListener("change", () => storeSetting(STORAGE_KEYS.cloudModel, modelSelect.value));
-
-    $("btn-firebase-enable-cloud")?.addEventListener("click", () => {
-      // The user explicitly opts in to the cloud fallback from the error overlay.
-      storeSetting(STORAGE_KEYS.cloudSwitch, "on");
-      storeSetting(STORAGE_KEYS.route, "prefer-device");
-      syncSettingsControls();
-      setCloudOptInVisible(false);
-      $("status-retry-btn")?.click(); // Retry re-runs init() with the new route
-    });
-  }
-
-  // Shows the stored route/model in the settings card. Also used after the prompt-bar model
-  // switcher changes them, so the two never disagree.
-  function syncSettingsControls() {
-    const routeSelect = $("firebase-route");
-    const modelSelect = $("firebase-cloud-model");
-    if (!routeSelect || !modelSelect) return;
-    const cloudSwitch = $("firebase-cloud-switch");
-    if (cloudSwitch) cloudSwitch.checked = isCloudAllowed();
-    routeSelect.value = currentRoute();
-    routeSelect.disabled = !isCloudAllowed();
-    modelSelect.value = currentCloudModel();
-    // The cloud model only matters when the route can reach the cloud.
-    modelSelect.disabled = !ROUTES[currentRoute()].usesCloud;
-  }
-
-  function setCloudAllowed(allowed) {
-    storeSetting(STORAGE_KEYS.cloudSwitch, allowed ? "on" : "off");
-    if (!allowed) setCloudOptInVisible(false);
-    syncSettingsControls();
-  }
-
-  function setCloudOptInVisible(visible) {
-    $("firebase-cloud-optin")?.classList.toggle("hidden", !visible);
-  }
+  // In providers/firebase-routing.js (per-request routing, answer labels, structured output).
+  const {
+    REASONS, chooseRequestMode, tooLongForDeviceMessage, describeAnswerSource, structuredOutputParams,
+  } = window.MyLocalAIFirebaseRouting;
 
   // ===================== LOADING =====================
   // Extension pages may only run scripts shipped with the extension; these are local files.
@@ -171,7 +87,7 @@
     const app = sdk.initializeApp(settings.config);
     initializeAppCheckForExtension(sdk, app, settings.appCheckDebugToken);
     const ai = sdk.getAI(app, { backend: new sdk.GoogleAIBackend() });
-    firebaseServices = { sdk, ai };
+    firebaseServices = { sdk, app, ai };
     return firebaseServices;
   }
 
@@ -189,6 +105,16 @@
       // Fetch a token only when a cloud request needs one, so on-device-only use makes no network calls.
       isTokenAutoRefreshEnabled: false,
     });
+  }
+
+  // Remote Config can rename the cloud models (firebase-remote-config.js). Asked once per panel,
+  // and only on a route that can reach the cloud, so "On-device only" makes no request.
+  let remoteModelNamesLoaded = false;
+  async function loadRemoteModelNames() {
+    if (remoteModelNamesLoaded) return;
+    remoteModelNamesLoaded = true;
+    const { sdk, app } = firebaseServices;
+    applyCloudModelNames(await window.MyLocalAIFirebaseRemoteConfig.fetchCloudModelNames(sdk, app));
   }
 
   // ===================== ON-DEVICE MODEL =====================
@@ -234,11 +160,12 @@
   }
 
   // ===================== MODEL =====================
-  // Both routes get the same system prompt and sampling settings, in each side's own format.
-  function buildModelParams(settings, routeId, cloudModelId) {
+  // Both sides get the same system prompt and sampling settings, in each side's own format.
+  // modeKey is an sdk.InferenceMode key: the route's own, or one chosen for a single request.
+  function buildModelParams(settings, modeKey, cloudModelId) {
     const { sdk } = firebaseServices;
     return {
-      mode: sdk.InferenceMode[ROUTES[routeId].mode],
+      mode: sdk.InferenceMode[modeKey],
       inCloudParams: {
         model: CLOUD_MODELS[cloudModelId].id,
         systemInstruction: settings.systemPrompt,
@@ -273,9 +200,9 @@
     };
   }
 
-  async function getModel(settings) {
+  async function getModel(settings, modeKey = ROUTES[currentRoute()].mode) {
     const { sdk, ai } = await ensureFirebaseServices();
-    const params = buildModelParams(settings, currentRoute(), currentCloudModel());
+    const params = buildModelParams(settings, modeKey, currentCloudModel());
     const key = JSON.stringify(params);
     if (cachedModel?.key !== key) cachedModel = { key, model: sdk.getGenerativeModel(ai, params) };
     return cachedModel.model;
@@ -303,63 +230,76 @@
   async function streamOnce({ history, images, signal, onText, settings }) {
     throwIfAborted(signal);
     startBackgroundDownload(settings);
-    const model = await getModel(settings);
-    const result = await model.generateContentStream(buildRequest(buildConversationPrompt(history), images), { signal });
+    const prompt = buildConversationPrompt(history);
+    const routing = routeRequest(settings, prompt);
+    const model = await getModel(settings, routing.mode);
+    const result = await model.generateContentStream(buildRequest(prompt, images), { signal });
 
     let fullText = "";
+    let source = "";
     for await (const chunk of result.stream) {
       // The on-device stream ignores the signal, so stop reading it ourselves.
       throwIfAborted(signal);
       fullText += chunk.text();
-      if (chunk.inferenceSource) lastInferenceSource = chunk.inferenceSource;
+      if (chunk.inferenceSource) source = chunk.inferenceSource;
       onText(fullText);
     }
-    return { content: fullText, reasoning: "" };
+    lastInferenceSource = source || sourceImpliedByMode(routing.mode);
+    return { content: fullText, reasoning: "", source: answerSource(routing.reason) };
+  }
+
+  // The user's route, adjusted for this one request (firebase-routing.js decides).
+  function routeRequest(settings, promptText) {
+    const request = { promptText, systemPrompt: settings.systemPrompt };
+    const routing = chooseRequestMode(ROUTES[currentRoute()], request);
+    if (routing.reason === REASONS.tooLongAndCloudOff) throw new Error(tooLongForDeviceMessage(request));
+    return routing;
+  }
+
+  // ONLY_* modes leave no choice, so they say where the answer ran even if a chunk does not.
+  function sourceImpliedByMode(modeKey) {
+    const { InferenceSource } = firebaseServices.sdk;
+    if (modeKey === "ONLY_ON_DEVICE") return InferenceSource.ON_DEVICE;
+    if (modeKey === "ONLY_IN_CLOUD") return InferenceSource.IN_CLOUD;
+    return "";
+  }
+
+  function answerSource(reason) {
+    if (!lastInferenceSource) return null;
+    return describeAnswerSource({
+      onDevice: lastInferenceSource === firebaseServices.sdk.InferenceSource.ON_DEVICE,
+      cloudModelId: CLOUD_MODELS[currentCloudModel()].id,
+      reason,
+    });
+  }
+
+  // ===================== STRUCTURED OUTPUT (memory tool, chat compaction) =====================
+  // Firebase hybrid structured output: the schema constrains Nano (responseConstraint) and the
+  // cloud model (responseSchema) alike, on the same route as the chat. Queued with the answers
+  // for the same reason they are.
+  function generateJson(args) {
+    const run = answerQueue.then(() => generateJsonOnce(args));
+    answerQueue = run.catch(() => { });
+    return run;
+  }
+
+  async function generateJsonOnce({ prompt, schema, signal, settings }) {
+    throwIfAborted(signal);
+    const { sdk, ai } = await ensureFirebaseServices();
+    const routing = routeRequest(settings, prompt);
+    const params = buildModelParams(settings, routing.mode, currentCloudModel());
+    const output = structuredOutputParams(schema);
+    params.inCloudParams.generationConfig = { ...params.inCloudParams.generationConfig, ...output.cloudGenerationConfig };
+    params.onDeviceParams.promptOptions = output.devicePromptOptions;
+    // A separate model: the chat model's on-device session must not get the JSON constraint.
+    const result = await sdk.getGenerativeModel(ai, params).generateContent(prompt, { signal });
+    return result.response.text();
   }
 
   // "Free memory when idle": drop the model so its on-device session can be released.
   // The SDK has no public destroy(); the next answer rebuilds the model (and session) lazily.
   function unload() {
     cachedModel = null;
-  }
-
-  // ===================== MODEL SWITCHER (prompt bar) =====================
-  // The prompt-bar switcher shows three choices: Gemini Nano on-device, or one of the cloud
-  // models. Picking a cloud model is an explicit opt-in to the cloud, so it is labelled ☁️.
-  const DEVICE_MODEL_ID = "device";
-  const CLOUD_MODEL_ID_PREFIX = "cloud:";
-
-  function currentModelId() {
-    return currentRoute() === "prefer-cloud" ? `${CLOUD_MODEL_ID_PREFIX}${currentCloudModel()}` : DEVICE_MODEL_ID;
-  }
-
-  // Synchronous: everything comes from settings, no network.
-  function listModels() {
-    const deviceDetail = currentRoute() === "prefer-device"
-      ? "On-device · cloud fallback on"
-      : "On-device · private";
-    const options = [{ id: DEVICE_MODEL_ID, label: "Gemini Nano", detail: deviceDetail }];
-    if (!isCloudAllowed()) return { options, currentId: DEVICE_MODEL_ID }; // the switch hides cloud models
-    for (const [key, model] of Object.entries(CLOUD_MODELS)) {
-      const tier = key === "fast" ? "Fast" : "Frontier";
-      options.push({ id: `${CLOUD_MODEL_ID_PREFIX}${key}`, label: model.id, detail: `☁️ Cloud · ${tier} · sends messages to Google` });
-    }
-    return { options, currentId: currentModelId() };
-  }
-
-  // Stores the choice only; the sidebar then calls init() to rebuild the model with it.
-  function selectModel(id) {
-    if (id === DEVICE_MODEL_ID) {
-      storeSetting(STORAGE_KEYS.route, "device");
-    } else if (id.startsWith(CLOUD_MODEL_ID_PREFIX) && !isCloudAllowed()) {
-      throw new Error("Cloud & internet is off in Settings");
-    } else if (id.startsWith(CLOUD_MODEL_ID_PREFIX) && Object.hasOwn(CLOUD_MODELS, id.slice(CLOUD_MODEL_ID_PREFIX.length))) {
-      storeSetting(STORAGE_KEYS.route, "prefer-cloud");
-      storeSetting(STORAGE_KEYS.cloudModel, id.slice(CLOUD_MODEL_ID_PREFIX.length));
-    } else {
-      throw new Error(`Unknown model: ${id}`);
-    }
-    syncSettingsControls();
   }
 
   function throwIfAborted(signal) {
@@ -371,9 +311,15 @@
     lastSetupError = "";
     setCloudOptInVisible(false);
     try {
+      // Before Firebase loads: the route decides whether anything may reach the network.
+      if (needsLaunchChoice()) {
+        showProgress("How should MyLocalAI run?", "Pick one. You can change it any time in Settings → Cloud & internet.");
+        await askLaunchChoice();
+      }
       await ensureFirebaseServices();
       deviceModel = await checkDeviceModel();
       const route = ROUTES[currentRoute()];
+      if (route.usesCloud) await loadRemoteModelNames();
       if (!route.usesCloud) await requireDeviceModel(settings, showProgress);
       cachedModel = null; // settings may have changed (Apply & Restart)
       await getModel(settings);
@@ -475,6 +421,7 @@
     statusMessage: "Starting Firebase AI Logic (hybrid)",
     init,
     stream,
+    generateJson,
     unload,
     describe,
     supportsImages,

@@ -130,21 +130,35 @@ Set up **Gemini Nano**, **Ollama**, or both, using the steps above. When the pan
 
 ### Firebase Hybrid edition (Firebase AI Logic)
 
-**Why it exists (value proposition).** On-device AI is private, free and works offline, but it only runs on some machines: Chrome desktop with enough disk, RAM or VRAM, and a downloaded model. Without it, a local-only assistant simply stops working. This edition keeps MyLocalAI's private-by-default chat and uses **Firebase AI Logic hybrid inference** so one code path serves both cases. Gemini Nano answers on-device when Chrome can run it. When it can't, and only if you allow it, the same request goes to cloud Gemini through Firebase, protected by App Check. Everything else stays the same: page context, tab screenshots, multi-answer replies, history and saved prompts.
+**Why it exists (value proposition).** People ask an AI about what they are reading: an email, a contract, a medical letter, an internal page at work. Pasting that into a cloud chatbot means handing it over. On-device AI is private, free and works offline, but it only runs on some machines (Chrome desktop with enough disk, RAM or VRAM, and a downloaded model) and Gemini Nano only holds about 9,000 tokens, so a local-only assistant stops working on long documents or on the wrong laptop. This edition gives you a **private-by-default side-panel assistant that you never have to leave**: Gemini Nano answers on your device, and when it can't — the model isn't on this machine, or the document is too long for it — the same request goes to cloud Gemini through **Firebase AI Logic hybrid inference**, *only if you allowed it*, and every answer says where it ran. Everything else stays the same: page context, tab and whole-page screenshots, memory, multi-answer replies, history and saved prompts.
 
-**How Firebase AI Logic is used.** [providers/firebase-backend.js](providers/firebase-backend.js) loads the bundled Firebase JS SDK ([vendor/firebase-ai.js](vendor/firebase-ai.js), built from [tools/firebase-bundle](tools/firebase-bundle)). It calls `initializeApp`, `initializeAppCheck`, `getAI(app, { backend: new GoogleAIBackend() })` and `getGenerativeModel(ai, { mode, inCloudParams, onDeviceParams })`, then streams every answer with `generateContentStream`. The footer shows where each answer ran (`response.inferenceSource`).
+**Who it is for.** Anyone who reads on the web and wants help without uploading what they read by default: students with study material, professionals with confidential pages, people on locked-down or low-end machines where Nano can't run.
+
+**What is hybrid about it** (all Firebase AI Logic, all in [providers/](providers)):
+
+| Feature | How | File |
+|---|---|---|
+| One request path for Nano and cloud Gemini | `getGenerativeModel(ai, { mode, inCloudParams, onDeviceParams })` + `generateContentStream` | [firebase-backend.js](providers/firebase-backend.js) |
+| **Long documents go to the cloud, short chats stay local** | Before each request the prompt is measured against Nano's 9,216-token window. On *On-device first*, a prompt that won't fit is sent `ONLY_IN_CLOUD` instead of overflowing on the device (the SDK only checks that Nano exists). On *On-device only*, it is never sent and the panel explains why. | [firebase-routing.js](providers/firebase-routing.js) |
+| **Every answer says where it ran** | A chip under each answer: ⚡ *On-device · Gemini Nano* or ☁️ *Cloud · model* (and why), from `inferenceSource` | [firebase-routing.js](providers/firebase-routing.js), [response-actions.js](sidebar/ui/response-actions.js) |
+| **Hybrid structured output** for the memory tool and chat compaction | One JSON schema, sent as `onDeviceParams.promptOptions.responseConstraint` (Nano) and `inCloudParams.generationConfig.responseSchema` (cloud), called with `generateContent` | [firebase-backend.js](providers/firebase-backend.js) |
+| **Remote Config** for cloud model names | `getRemoteConfig` → `fetchAndActivate` → `getValue`, so a retired model is swapped from the console without a release; only stable Gemini text models are accepted | [firebase-remote-config.js](providers/firebase-remote-config.js) |
+| **App Check** (enforced by Firebase AI Logic) | `initializeAppCheck` with a registered debug token, since reCAPTCHA can't load in an MV3 extension | [firebase-backend.js](providers/firebase-backend.js) |
+| Model download from a click, cloud meanwhile | `initializeDeviceModel()` on a user gesture; with cloud allowed, answers come from the cloud until Nano is ready | [firebase-backend.js](providers/firebase-backend.js) |
+
+**How Firebase AI Logic is used.** [providers/firebase-backend.js](providers/firebase-backend.js) loads the bundled Firebase JS SDK ([vendor/firebase-ai.js](vendor/firebase-ai.js), built from [tools/firebase-bundle](tools/firebase-bundle)). It calls `initializeApp`, `initializeAppCheck`, `getAI(app, { backend: new GoogleAIBackend() })` and `getGenerativeModel(ai, { mode, inCloudParams, onDeviceParams })`, then streams every answer with `generateContentStream` and asks for JSON with `generateContent`. [providers/firebase-remote-config.js](providers/firebase-remote-config.js) calls `getRemoteConfig`, `fetchAndActivate` and `getValue`.
 
 **Where answers run** (Settings → *Firebase AI Logic · hybrid*):
 
 | Setting | InferenceMode | Cloud? |
 |---|---|---|
 | On-device only *(default)* | `ONLY_ON_DEVICE` | Never |
-| On-device first, cloud Gemini fallback | `PREFER_ON_DEVICE` | Only when on-device can't answer |
+| On-device first, cloud Gemini fallback | `PREFER_ON_DEVICE` (`ONLY_IN_CLOUD` for a message too long for Nano) | Only when on-device can't answer, or the message is too long for it |
 | Cloud Gemini first, on-device fallback | `PREFER_IN_CLOUD` | Yes; on-device only if the cloud call fails |
 
 **Cloud & internet switch.** The first control in that card turns every Firebase cloud feature off in one click. While it is off, every answer runs on-device (`ONLY_ON_DEVICE`) whatever route you picked, cloud models disappear from the model pill, and the panel makes no network request at all. It takes effect at once and keeps your open chat; turning it back on restores the route you had chosen.
 
-Cloud models (free tier only): **Fast**: `gemini-3.5-flash-lite` (default), **Frontier**: `gemini-4-hydrogen`.
+Cloud models (free tier only): **Fast**: `gemini-3.5-flash-lite` (default), **Frontier**: `gemini-4-hydrogen`. Remote Config can rename them (setup step 6).
 
 > ☁️ **Cloud is opt-in and off by default.** With a cloud route selected, your messages, any selected page text, and any attached image or screenshot are sent to Google's Gemini Developer API through Firebase AI Logic (`firebasevertexai.googleapis.com`). On-device only never sends chat text anywhere.
 
@@ -165,8 +179,15 @@ Cloud models (free tier only): **Fast**: `gemini-3.5-flash-lite` (default), **Fr
    - Leave `appCheckDebugToken: ""`, open the side panel, right-click → **Inspect**, and copy the `App Check debug token: …` line from the Console.
    - Register it in Firebase console → **Security → App Check → Apps → Manage debug tokens**.
    - Optionally paste it into `appCheckDebugToken` so it survives reinstalls. Treat it like a password: anyone holding it can use your project's App Check. `--zip` never packs `firebase-settings.local.js`, so a zip you share or upload carries neither the token nor your config.
+6. **Remote Config (optional).** In Firebase console → **Remote Config** (Client), add string parameters `cloud_model_fast` and/or `cloud_model_frontier` with a stable Gemini model name (e.g. `gemini-3.5-flash-lite`) and publish. The panel reads them when a cloud route is in use, at most once an hour, and keeps the built-in names when a parameter is unset, the fetch fails, or the name isn't a stable Gemini text model (preview, experimental, `-latest`, image, speech and Live models are refused). If your API key is restricted, allow the Firebase Remote Config and Firebase Installations APIs too.
 
-**How chat history reaches the model.** Firebase on-device inference is single-turn (each call is a fresh Chrome session). Each request therefore sends **one prompt**: the newest earlier turns, at most 10 messages and about 12,000 characters, labelled `User:` / `Assistant:`, followed by your new message. The system prompt goes in the model's own slot (on-device `initialPrompts`, cloud `systemInstruction`). The cloud route gets the same prompt, so an answer doesn't depend on which side served it. With **Responses at once** above 1, answers are generated one after another, because the SDK replaces its on-device session on every call.
+**How chat history reaches the model.** Firebase on-device inference is single-turn (each call is a fresh Chrome session). Each request therefore sends **one prompt**: the newest earlier turns, at most 20 messages and about 12,000 characters, labelled `User:` / `Assistant:`, followed by your new message. The system prompt goes in the model's own slot (on-device `initialPrompts`, cloud `systemInstruction`). The cloud route gets the same prompt, so an answer doesn't depend on which side served it. With **Responses at once** above 1, answers are generated one after another, because the SDK replaces its on-device session on every call.
+
+---
+
+### #BuildHybridAI 2026
+
+This project was started and built during the submission period (first commit 2026-11-22). The Firebase Hybrid edition, its tests, and everything in the table above were written for the hackathon. Platform: **Web (Chrome extension)**. Rules digest: [docs/HACKATHON_RULES.md](docs/HACKATHON_RULES.md). Licence: [LICENSE](LICENSE).
 
 ---
 
@@ -189,7 +210,7 @@ Cloud models (free tier only): **Fast**: `gemini-3.5-flash-lite` (default), **Fr
 
 - **Gemini Nano edition:** has no network permissions at all (site access is only requested, optionally, for tab screenshots). Prompts are processed by Chrome on your device.
 - **Ollama / Mixed editions:** may only connect to `localhost:11434` (your own Ollama).
-- **Firebase Hybrid edition:** may only connect to `firebasevertexai.googleapis.com` (Firebase AI Logic); App Check tokens come from Google's App Check service. With the default **On-device only** route, nothing is sent: prompts are processed by Chrome on your device. If you pick a cloud route, chat text, selected page text and attached images are sent to Google's Gemini Developer API, and Google's terms for that API apply.
+- **Firebase Hybrid edition:** may only connect to `firebasevertexai.googleapis.com` (Firebase AI Logic), `firebaseremoteconfig.googleapis.com` and `firebaseinstallations.googleapis.com` (Remote Config, only on a cloud route; it sends no chat text); App Check tokens come from Google's App Check service. With the default **On-device only** route, nothing is sent: prompts are processed by Chrome on your device, and a message too long for Gemini Nano is not sent anywhere. If you pick a cloud route, chat text, selected page text and attached images are sent to Google's Gemini Developer API, and Google's terms for that API apply.
 - Opening the panel never contacts the internet: fonts, scripts and styles are all shipped inside the extension (the panel uses your system font).
 - Chat history and memories are stored in the extension's local storage on your computer. Selected page text is read only when you select it (with site access granted, while the panel is open) or use the right-click menu; it stays inside the extension.
 
@@ -221,7 +242,8 @@ Editions are defined in `EDITIONS` in [scripts/build.mjs](scripts/build.mjs). Th
 │   ├── events.js              DOM event wiring
 │   └── main.js                startup (loaded last)
 ├── features/                  self-contained modules: model switcher pill, full-page capture and its glow
-├── providers/                 extra backends: firebase-backend.js (firebase-hybrid edition)
+├── providers/                 firebase-hybrid edition: backend (SDK calls), settings (routes, cloud models),
+│                              routing (long input → cloud, answer chips, schemas), remote-config, prompt builder
 ├── styles/                    the panel's CSS, linked in cascade order
 ├── vendor/                    third-party: DOMPurify, marked, bundled Firebase JS SDK
 ├── docs/                      hackathon rules, macOS Ollama CORS launch agent

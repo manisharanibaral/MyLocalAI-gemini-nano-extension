@@ -26,6 +26,19 @@ function createResponseActions(bubble, visible) {
   return row;
 }
 
+// A provider may say where an answer ran ({ kind, label, title }, e.g. Firebase: on-device or
+// cloud). It sits with the answer's buttons so the user sees it on every answer.
+function showAnswerSource(bubble, source) {
+  const row = bubble.parentElement?.querySelector(".msg-actions");
+  if (!row || !source?.label) return;
+  row.querySelector(".msg-source")?.remove();
+  const chip = document.createElement("span");
+  chip.className = `msg-source msg-source-${source.kind === "cloud" ? "cloud" : "device"}`;
+  chip.textContent = source.label;
+  chip.title = source.title || "";
+  row.appendChild(chip);
+}
+
 function createActionButton(text, title) {
   const btn = document.createElement("button");
   btn.type = "button";

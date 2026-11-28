@@ -14,15 +14,17 @@ const exists = (path) => existsSync(new URL(path, root));
 
 const backendJs = read("providers/firebase-backend.js");
 const promptJs = read("providers/firebase-prompt.js");
-// firebase-backend.js uses the prompt builder that sidebar.html loads just before it.
+const settingsJs = read("providers/firebase-settings.js");
+const routingJs = read("providers/firebase-routing.js");
+// firebase-backend.js uses the helpers that sidebar.html loads just before it.
 const loadProvider = (sandbox) => {
-  vm.runInNewContext(promptJs, sandbox);
+  for (const helper of [promptJs, settingsJs, routingJs]) vm.runInNewContext(helper, sandbox);
   vm.runInNewContext(backendJs, sandbox);
   return sandbox.window.MYLOCALAI_PROVIDERS.firebase;
 };
 
 // ===== New files exist; the extension root stays free of package.json =====
-for (const file of ["providers/firebase-backend.js", "firebase-settings.example.js", "vendor/firebase-ai.js",
+for (const file of ["providers/firebase-backend.js", "providers/firebase-settings.js", "providers/firebase-routing.js", "firebase-settings.example.js", "vendor/firebase-ai.js",
   "tools/firebase-bundle/package.json", "tools/firebase-bundle/entry.js", "docs/HACKATHON_RULES.md"]) {
   assert.ok(exists(file), `${file} should exist`);
 }
@@ -46,8 +48,10 @@ assert.match(read(".mcp.json"), /"firebase-tools@\d+\.\d+\.\d+"/, "the Firebase 
 assert.match(edition.manifest.name, /Firebase/, "the edition needs its own name");
 assert.equal(/zero cloud/i.test(edition.manifest.description), false, "the description must not claim zero cloud");
 assert.ok(edition.manifest.description.length <= 132, "Chrome limits descriptions to 132 characters");
-assert.deepEqual(edition.manifest.host_permissions, ["https://firebasevertexai.googleapis.com/*"],
-  "only the Firebase AI Logic endpoint gets host access");
+const FIREBASE_HOSTS = ["https://firebasevertexai.googleapis.com/*", "https://firebaseremoteconfig.googleapis.com/*",
+  "https://firebaseinstallations.googleapis.com/*"];
+assert.deepEqual(edition.manifest.host_permissions, FIREBASE_HOSTS,
+  "only Firebase AI Logic and Remote Config (with the Installations API it needs) get host access");
 assert.ok(Number(edition.manifest.minimum_chrome_version) >= 139, "hybrid on-device inference needs Chrome 139+");
 
 // ===== Build output =====
@@ -64,7 +68,8 @@ if (canZip) {
 } else {
   console.warn("! zip/unzip not installed: the zip contents were not checked");
 }
-for (const file of ["providers/firebase-backend.js", "providers/firebase-prompt.js", "vendor/firebase-ai.js", "sidebar.html", ...sidebarPaths, "config.js", "manifest.json"]) {
+for (const file of ["providers/firebase-backend.js", "providers/firebase-prompt.js", "providers/firebase-settings.js",
+  "providers/firebase-routing.js", "vendor/firebase-ai.js", "sidebar.html", ...sidebarPaths, "config.js", "manifest.json"]) {
   assert.ok(exists(`${dist}${file}`), `dist should ship ${file}`);
 }
 {
@@ -73,7 +78,7 @@ for (const file of ["providers/firebase-backend.js", "providers/firebase-prompt.
   const config = JSON.parse(JSON.stringify(sandbox.window.MYLOCALAI_CONFIG));
   assert.deepEqual(config, { edition: "firebase-hybrid", backends: ["firebase"] }, "generated config.js");
   const manifest = JSON.parse(read(`${dist}manifest.json`));
-  assert.deepEqual(manifest.host_permissions, ["https://firebasevertexai.googleapis.com/*"], "built manifest host access");
+  assert.deepEqual(manifest.host_permissions, FIREBASE_HOSTS, "built manifest host access");
   assert.equal(manifest.minimum_chrome_version, "139");
   assert.equal(/zero cloud/i.test(manifest.description), false, "built description must not claim zero cloud");
   const scriptPolicy = /script-src ([^;]*)/.exec(manifest.content_security_policy?.extension_pages ?? "script-src 'self'")[1];
@@ -96,9 +101,17 @@ assert.match(read(".gitignore"), /^firebase-settings\.local\.js$/m, ".gitignore 
 const entryJs = read("tools/firebase-bundle/entry.js");
 assert.match(entryJs, /from "firebase\/ai"/, "the bundle imports firebase/ai");
 assert.match(entryJs, /from "firebase\/app-check"/, "the bundle imports firebase/app-check");
+assert.match(entryJs, /from "firebase\/remote-config"/, "the bundle imports firebase/remote-config");
 const bundle = read("vendor/firebase-ai.js");
 assert.match(bundle, /MyLocalAIFirebase/, "the bundle exposes window.MyLocalAIFirebase");
 assert.match(bundle, /firebasevertexai\.googleapis\.com/, "the bundled SDK calls the Firebase AI Logic endpoint");
+assert.match(bundle, /firebaseremoteconfig\.googleapis\.com/, "the bundled SDK includes Remote Config");
+{
+  const remoteConfigJs = read("providers/firebase-remote-config.js");
+  for (const call of ["sdk.getRemoteConfig(", "sdk.fetchAndActivate(", "sdk.getValue("]) {
+    assert.ok(remoteConfigJs.includes(call), `firebase-remote-config.js should call ${call}`);
+  }
+}
 for (const call of ["sdk.initializeApp(", "sdk.getAI(", "new sdk.GoogleAIBackend()", "sdk.getGenerativeModel(",
   ".generateContentStream(", "sdk.initializeAppCheck(", ".initializeDeviceModel("]) {
   assert.ok(backendJs.includes(call), `firebase-backend.js should call ${call}`);
@@ -114,16 +127,16 @@ assert.match(backendJs, /FIREBASE_APPCHECK_DEBUG_TOKEN = /, "App Check uses a de
 assert.equal(/FIREBASE_APPCHECK_DEBUG_TOKEN\s*=\s*false/.test(backendJs), false, "App Check must not be disabled");
 
 // ===== Models: free-tier only =====
-assert.match(backendJs, /id: "gemini-3\.5-flash-lite"/, "fast cloud model");
-assert.match(backendJs, /id: "gemini-4-hydrogen"/, "frontier cloud model");
-for (const source of [backendJs, sidebarHtml]) {
+assert.match(settingsJs, /id: "gemini-3\.5-flash-lite"/, "fast cloud model");
+assert.match(settingsJs, /id: "gemini-4-hydrogen"/, "frontier cloud model");
+for (const source of [backendJs, settingsJs, sidebarHtml]) {
   assert.equal(/gemini-2\.5|gemini-4-(neon|carbon|argon)|imagen|gemini-[\w.-]*image/i.test(source), false,
     "no paid (Blaze), retiring or image models");
 }
 
 // ===== Cloud is opt-in, off by default, and labelled =====
-assert.match(backendJs, /const DEFAULT_ROUTE = "device";/, "the default route must be on-device only");
-assert.match(backendJs, /device: \{ mode: "ONLY_ON_DEVICE", usesCloud: false/, "the device route never uses the cloud");
+assert.match(settingsJs, /const DEFAULT_ROUTE = "device";/, "the default route must be on-device only");
+assert.match(settingsJs, /device: \{ mode: "ONLY_ON_DEVICE", usesCloud: false/, "the device route never uses the cloud");
 assert.match(sidebarHtml, /<select id="firebase-route"[^>]*>\s*<option value="device">On-device only \(default, private\)/,
   "the first (default) route option is on-device only");
 assert.match(sidebarHtml, /<section id="firebase-settings" class="settings-card hidden"/, "the Firebase card is hidden outside this edition");
@@ -142,6 +155,10 @@ assert.ok(sidebarJs.indexOf("function streamOllama(") < sidebarJs.indexOf("funct
   const backendTag = sidebarHtml.indexOf('src="providers/firebase-backend.js"');
   const sidebarTag = sidebarHtml.indexOf('src="sidebar/');
   assert.ok(configTag < backendTag && backendTag < sidebarTag, "firebase-backend.js loads after config.js, before the sidebar scripts");
+  for (const helper of ["firebase-prompt", "firebase-settings", "firebase-routing"]) {
+    const tag = sidebarHtml.indexOf(`src="providers/${helper}.js"`);
+    assert.ok(tag > configTag && tag < backendTag, `${helper}.js loads before firebase-backend.js, which reads it at load time`);
+  }
   assert.equal(sidebarHtml.includes('src="vendor/firebase-ai.js"'), false, "the SDK is loaded lazily, never in other editions");
 }
 
@@ -150,7 +167,7 @@ assert.ok(sidebarJs.indexOf("function streamOllama(") < sidebarJs.indexOf("funct
   const sandbox = { window: {}, console };
   loadProvider(sandbox);
   const provider = sandbox.window.MYLOCALAI_PROVIDERS.firebase;
-  for (const method of ["init", "stream", "unload", "describe", "supportsImages", "statusLine", "errorTitle", "helpLines", "bindSettingsUI",
+  for (const method of ["init", "stream", "generateJson", "unload", "describe", "supportsImages", "statusLine", "errorTitle", "helpLines", "bindSettingsUI",
     "listModels", "selectModel"]) {
     assert.equal(typeof provider[method], "function", `provider.${method} should exist`);
   }
@@ -192,6 +209,49 @@ assert.ok(sidebarJs.indexOf("function streamOllama(") < sidebarJs.indexOf("funct
   const huge = [{ role: "user", content: "x".repeat(20000) }, { role: "assistant", content: "ok" }, { role: "user", content: "q" }];
   assert.equal(build(huge).includes("x".repeat(100)), false, "turns past the character budget are dropped");
 }
+
+// ===== Per-request routing (providers/firebase-routing.js) =====
+{
+  const sandbox = { window: {} };
+  vm.runInNewContext(routingJs, sandbox);
+  const routing = sandbox.window.MyLocalAIFirebaseRouting;
+  const plain = (value) => JSON.parse(JSON.stringify(value));
+  const short = { promptText: "Hi", systemPrompt: "Be brief." };
+  const long = { promptText: "x".repeat(30000), systemPrompt: "Be brief." };
+  for (const mode of ["ONLY_ON_DEVICE", "PREFER_ON_DEVICE", "PREFER_IN_CLOUD"]) {
+    assert.deepEqual(plain(routing.chooseRequestMode({ mode }, short)), { mode, reason: "" }, `a short prompt keeps ${mode}`);
+  }
+  assert.deepEqual(plain(routing.chooseRequestMode({ mode: "PREFER_ON_DEVICE" }, long)), { mode: "ONLY_IN_CLOUD", reason: "too-long" });
+  assert.deepEqual(plain(routing.chooseRequestMode({ mode: "ONLY_ON_DEVICE" }, long)), { mode: "ONLY_ON_DEVICE", reason: "too-long-no-cloud" },
+    "on-device only never switches to the cloud");
+  assert.deepEqual(plain(routing.chooseRequestMode({ mode: "PREFER_IN_CLOUD" }, long)), { mode: "PREFER_IN_CLOUD", reason: "" });
+  assert.equal(routing.ON_DEVICE_CONTEXT_TOKENS, 9216, "Gemini Nano's documented on-device limit");
+  assert.ok(routing.estimateTokens("abcd".repeat(300)) >= 300, "the estimate never undercounts English (~4 chars/token)");
+  // The system prompt counts too: a prompt that fits alone can overflow with a long one.
+  const nearLimit = { promptText: "x".repeat(20000), systemPrompt: "" };
+  assert.equal(routing.chooseRequestMode({ mode: "PREFER_ON_DEVICE" }, nearLimit).reason, "");
+  assert.equal(routing.chooseRequestMode({ mode: "PREFER_ON_DEVICE" }, { ...nearLimit, systemPrompt: "s".repeat(4000) }).reason, "too-long");
+
+  const schema = {
+    type: "object",
+    properties: { tags: { type: "array", items: { type: "string", maxLength: 9 } }, kind: { type: "string", enum: ["a", "b"] } },
+    required: ["kind"],
+    additionalProperties: false,
+  };
+  assert.deepEqual(plain(routing.toCloudSchema(schema)), {
+    type: "object",
+    properties: { tags: { type: "array", items: { type: "string" } }, kind: { type: "string", enum: ["a", "b"] } },
+    required: ["kind"],
+  }, "the cloud schema drops unsupported keywords at every level");
+  const output = routing.structuredOutputParams(schema);
+  assert.equal(output.devicePromptOptions.responseConstraint, schema, "Nano gets the schema unchanged");
+  assert.equal(output.cloudGenerationConfig.responseMimeType, "application/json");
+  assert.equal(schema.additionalProperties, false, "the caller's schema is not modified");
+
+  assert.equal(routing.describeAnswerSource({ onDevice: true }).kind, "device");
+  assert.match(routing.describeAnswerSource({ onDevice: false, cloudModelId: "m", reason: "" }).label, /^☁️ Cloud · m$/);
+}
+assert.match(backendJs, /\.generateContent\(prompt/, "structured output calls Firebase AI Logic's generateContent");
 
 // ===== "Answer length": the cloud route gets maxOutputTokens only when there is a cap =====
 {

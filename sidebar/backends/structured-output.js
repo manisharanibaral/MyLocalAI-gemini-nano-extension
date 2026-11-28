@@ -13,7 +13,7 @@ async function askActiveBackendForJson(prompt, schema, { timeoutMs = STRUCTURED_
   const signal = stopSignal && AbortSignal.any ? AbortSignal.any([timeout, stopSignal]) : timeout;
   if (activeBackend === "nano") return askNanoForJson(prompt, schema, signal);
   if (activeBackend === "ollama") return askOllamaForJson(prompt, schema, signal);
-  if (isProviderActive()) return askProviderForJson(prompt, signal);
+  if (isProviderActive()) return askProviderForJson(prompt, schema, signal);
   throw new Error("No model is ready");
 }
 
@@ -56,10 +56,23 @@ async function askOllamaForJson(prompt, schema, signal) {
   return data?.message?.content ?? "";
 }
 
-// Providers only promise stream(), so the tool prompt goes through it as a one-message chat.
+// A provider with generateJson() constrains the reply to the schema itself (Firebase: hybrid
+// structured output). One that only has stream(), or rejects the schema as unsupported, gets
+// the prompt as a one-message chat and the prompt's own instructions have to do.
+async function askProviderForJson(prompt, schema, signal) {
+  if (typeof externalProvider.generateJson === "function") {
+    try {
+      return await externalProvider.generateJson({ prompt, schema, signal, settings: providerRequestSettings() });
+    } catch (err) {
+      if (err?.name !== "NotSupportedError" && !(err instanceof TypeError)) throw err;
+    }
+  }
+  return askProviderForPlainJson(prompt, signal);
+}
+
 // The chat's own settings are reused on purpose: different ones would make the Firebase
 // provider rebuild its model (and on-device session) for every tool call.
-async function askProviderForJson(prompt, signal) {
+async function askProviderForPlainJson(prompt, signal) {
   const answer = await externalProvider.stream({
     history: [{ role: "user", content: prompt }],
     images: [],

@@ -30,6 +30,17 @@
       <h2 id="status-title" class="status-title">Initializing…</h2>
       <p id="status-message" class="status-message">Looking for an available AI backend</p>
       <button id="status-retry-btn" class="btn-retry hidden">Retry</button>
+      <!-- Firebase hybrid edition: the first-launch question, shown by firebase-settings.js. -->
+      <div id="firebase-launch-choice" class="status-choice hidden" role="group" aria-label="How MyLocalAI runs">
+        <button id="btn-launch-private" class="status-choice-btn">
+          <span class="status-choice-title">🔒 Private only (Nano)</span>
+          <span class="status-choice-note">Gemini Nano on this device. Nothing is sent anywhere.</span>
+        </button>
+        <button id="btn-launch-hybrid" class="status-choice-btn">
+          <span class="status-choice-title">☁️ Hybrid (Nano, then cloud if needed)</span>
+          <span class="status-choice-note">Gemini Nano first. If it isn't available or a message is too long, it goes to Google's Gemini API through Firebase.</span>
+        </button>
+      </div>
       <!-- Firebase hybrid edition: shown by firebase-backend.js when on-device Gemini Nano is unavailable. -->
       <div id="firebase-cloud-optin" class="status-optin hidden">
         <button id="btn-firebase-enable-cloud" class="btn-retry">Allow cloud fallback &amp; retry</button>
@@ -430,6 +441,9 @@
   <script src="config.js"></script>
   <!-- Registers optional providers; loads the Firebase SDK only when config.js enables "firebase". -->
   <script src="providers/firebase-prompt.js"></script>
+  <script src="providers/firebase-settings.js"></script>
+  <script src="providers/firebase-routing.js"></script>
+  <script src="providers/firebase-remote-config.js"></script>
   <script src="providers/firebase-backend.js"></script>
   <script src="features/model-switcher.js"></script>
   <script src="features/capture-indicator.js"></script>

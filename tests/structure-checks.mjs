@@ -107,5 +107,6 @@ await import("./panel/context-budget.mjs");
 await import("./panel/memory.mjs");
 await import("./panel/compaction.mjs");
 await import("./panel/selected-text.mjs");
+await import("./panel/firebase-hybrid.mjs");
 
 console.log("Structure checks passed");

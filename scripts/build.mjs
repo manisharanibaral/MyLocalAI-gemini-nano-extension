@@ -40,6 +40,9 @@ const OLLAMA_HOSTS = ["http://localhost:11434/*", "http://127.0.0.1:11434/*"];
 // verified). Named in the Firebase AI Logic docs (FAQ "Required APIs", App Check page) and
 // matches DEFAULT_DOMAIN in the bundled SDK.
 const FIREBASE_AI_LOGIC_HOSTS = ["https://firebasevertexai.googleapis.com/*"];
+// Remote Config (cloud model names) and the Installations API it needs to identify the app.
+// Only reached on a route that uses the cloud (providers/firebase-remote-config.js).
+const FIREBASE_REMOTE_CONFIG_HOSTS = ["https://firebaseremoteconfig.googleapis.com/*", "https://firebaseinstallations.googleapis.com/*"];
 
 export const EDITIONS = {
   nano: {
@@ -82,7 +85,7 @@ export const EDITIONS = {
       action: { default_title: "Open MyLocalAI (Firebase Hybrid)" },
       // Firebase AI Logic on-device (hybrid) inference needs Chrome desktop 139+.
       minimum_chrome_version: "139",
-      host_permissions: FIREBASE_AI_LOGIC_HOSTS,
+      host_permissions: [...FIREBASE_AI_LOGIC_HOSTS, ...FIREBASE_REMOTE_CONFIG_HOSTS],
     },
   },
 };

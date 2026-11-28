@@ -1,7 +1,7 @@
 {
   "name": "mylocalai-firebase-bundle",
   "private": true,
-  "description": "Bundles the Firebase JS SDK (app, app-check, ai) into ../../vendor/firebase-ai.js. Chrome extensions cannot load remote scripts, so the SDK must ship inside the extension.",
+  "description": "Bundles the Firebase JS SDK (app, app-check, ai, remote-config) into ../../vendor/firebase-ai.js. Chrome extensions cannot load remote scripts, so the SDK must ship inside the extension.",
   "scripts": {
     "build": "esbuild entry.js --bundle --format=iife --minify --outfile=../../vendor/firebase-ai.js"
   },

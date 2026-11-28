@@ -6,7 +6,7 @@ Source pages (read 2026-11-22 in a browser; automated fetches got HTTP 403):
 |---|---|
 | https://firebasehybridaihackathon.devpost.com/rules | Read |
 | https://firebasehybridaihackathon.devpost.com/resources | Read |
-| https://firebasehybridaihackathon.devpost.com/ (overview) | **Not read**: the fetcher got 403 and the browser navigation was blocked. Paste its text to fill the gap. |
+| https://firebasehybridaihackathon.devpost.com/ (overview) | Read 2026-11-28 from an open Chrome tab (automated fetches still get 403) |
 
 > **This is a paraphrase, not the official text.** Quoting limits allowed only one short
 > verbatim quote, so each item below is summarised and points to its section of the
@@ -58,6 +58,21 @@ or Devpost approve in writing.
 - §6 says, verbatim: "Firebase AI Logic requires App Check; debug tokens are accepted in submissions."
 - The judging criteria score how well the project uses **Firebase AI Logic hybrid
   inference** (§8).
+
+## Overview page highlights (read 2026-11-28)
+
+- The pitch: on-device models are fast, private and free but not on every device, so the
+  app should run on-device when it can and fall back to the cloud when it can't, through
+  the Firebase AI Logic hybrid SDK. The page's own example idea is a notes app that
+  summarises offline and hands *long documents* to the cloud — the same split this
+  project's router makes ([providers/firebase-routing.js](../providers/firebase-routing.js)).
+- Multi-platform apps get strong consideration for the Grand Prize; an outstanding
+  single-platform app can still win.
+- Required: a working app, a public repo, a demo video (≤ 3 min, YouTube) and a text
+  description. Remote Config, Firestore and Authentication are encouraged next to the
+  required App Check. *This project uses App Check and Remote Config.*
+- The resources page points to the AI Logic production checklist; the items this project
+  follows are App Check, Remote Config for model names, and stable model names only.
 
 ## Rules that limit what we build or use (Rules §6)
 

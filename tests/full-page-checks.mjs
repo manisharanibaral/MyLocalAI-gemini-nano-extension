@@ -171,7 +171,10 @@ async function assertFailsAndRestores({ onCapture, signal, expected, message }) 
 {
   // Firebase: one inlineData part per image.
   const sandbox = { window: {}, console };
-  vm.runInNewContext(read("providers/firebase-prompt.js"), sandbox); // firebase-backend.js needs it
+  // firebase-backend.js reads these helpers at load time, as sidebar.html loads them before it.
+  for (const helper of ["firebase-prompt", "firebase-settings", "firebase-routing"]) {
+    vm.runInNewContext(read(`providers/${helper}.js`), sandbox);
+  }
   vm.runInNewContext(read("providers/firebase-backend.js"), sandbox);
   const { buildRequest } = sandbox.window.MYLOCALAI_PROVIDERS.firebase;
   assert.equal(buildRequest("q", []), "q");

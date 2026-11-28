@@ -66,5 +66,6 @@ async function streamProvider(aiBubble, images) {
     },
   });
   finalizeMessage(aiBubble, answer.content, answer.reasoning);
+  showAnswerSource(aiBubble, answer.source);
   return answer;
 }

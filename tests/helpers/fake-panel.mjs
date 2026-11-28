@@ -26,9 +26,11 @@ class FakeElement {
   }
   get innerHTML() { return this.textContent; }
   set innerHTML(html) { this.textContent = html; this.children = []; }
-  append(...nodes) { this.children.push(...nodes); }
-  prepend(...nodes) { this.children.unshift(...nodes); }
-  appendChild(node) { this.children.push(node); return node; }
+  // parentElement is kept because the panel finds an answer's button row through it.
+  append(...nodes) { nodes.forEach((node) => this.adopt(node)); this.children.push(...nodes); }
+  prepend(...nodes) { nodes.forEach((node) => this.adopt(node)); this.children.unshift(...nodes); }
+  appendChild(node) { this.adopt(node); this.children.push(node); return node; }
+  adopt(node) { if (node instanceof FakeElement) node.parentElement = this; }
   replaceChildren(...nodes) { this.children = nodes; }
   addEventListener(type, handler) { (this.listeners[type] ||= []).push(handler); }
   fire(type, event = {}) { (this.listeners[type] || []).forEach((handler) => handler({ target: this, ...event })); }
@@ -58,7 +60,8 @@ function fakeDocument() {
       return bySelector.get(selector);
     },
     querySelectorAll: (selector) => (selector.includes("response-count") ? responseCounts : []),
-    getElementById: () => null,
+    // Same elements as querySelector("#id"), so provider files that use getElementById are wired too.
+    getElementById(id) { return this.querySelector(`#${id}`); },
   };
 }
 
@@ -75,7 +78,8 @@ function fakeStorage(initial = {}) {
 // Runs sidebar.html's scripts one by one in a shared global scope, as the browser does.
 // Vendor libraries are left out: the panel falls back to plain text without them.
 // storage: localStorage items already saved before the panel opens (e.g. settings).
-export function bootPanel({ globals = {}, storage = {} } = {}) {
+// afterScripts: { path: code } run right after that script, e.g. to switch config.js's edition.
+export function bootPanel({ globals = {}, storage = {}, afterScripts = {} } = {}) {
   const document = fakeDocument();
   const windowListeners = {};
   const context = vm.createContext({
@@ -96,6 +100,7 @@ export function bootPanel({ globals = {}, storage = {} } = {}) {
   context.window = context;
   for (const path of scriptPaths.filter((p) => !p.startsWith("vendor/"))) {
     vm.runInContext(read(path), context, { filename: path });
+    if (afterScripts[path]) vm.runInContext(afterScripts[path], context);
   }
   return {
     element: (selector) => document.querySelector(selector),

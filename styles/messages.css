@@ -104,6 +104,18 @@
   margin-top: 4px;
 }
 .msg-actions.hidden { display: none; }
+/* Where the answer ran (on-device / cloud), set by showAnswerSource. */
+.msg-source {
+  align-self: center;
+  margin-left: auto;
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--border-subtle);
+  opacity: 0.85;
+}
+.msg-source-device { color: #34D399; border-color: rgba(52, 211, 153, 0.4); }
+.msg-source-cloud { color: #60A5FA; border-color: rgba(96, 165, 250, 0.4); }
 .msg-action-btn {
   background: transparent;
   border: 1px solid var(--border-subtle);
