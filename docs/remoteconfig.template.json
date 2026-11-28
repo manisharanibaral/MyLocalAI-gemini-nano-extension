@@ -1,0 +1,14 @@
+{
+  "parameters": {
+    "cloud_model_fast": {
+      "defaultValue": { "value": "gemini-3.5-flash-lite" },
+      "description": "MyLocalAI Firebase Hybrid: the Fast cloud model. Free tier, stable Gemini text models only.",
+      "valueType": "STRING"
+    },
+    "cloud_model_frontier": {
+      "defaultValue": { "value": "gemini-4-hydrogen" },
+      "description": "MyLocalAI Firebase Hybrid: the Frontier cloud model. Free tier, stable Gemini text models only.",
+      "valueType": "STRING"
+    }
+  }
+}

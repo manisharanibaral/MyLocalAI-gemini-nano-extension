@@ -8,8 +8,9 @@ import { getAI, getGenerativeModel, GoogleAIBackend, InferenceMode, InferenceSou
 // CustomProvider placeholder; see README "Firebase hybrid edition → App Check".
 import { initializeAppCheck, CustomProvider } from "firebase/app-check";
 // Remote Config holds the cloud model names, so a retired model can be swapped without a
-// new extension release (Firebase AI Logic production checklist).
-import { getRemoteConfig, fetchAndActivate, getValue } from "firebase/remote-config";
+// new extension release (Firebase AI Logic production checklist). onConfigUpdate + activate
+// apply a console change while the panel is open (real-time Remote Config).
+import { getRemoteConfig, fetchAndActivate, getValue, onConfigUpdate, activate } from "firebase/remote-config";
 
 window.MyLocalAIFirebase = {
   initializeApp,
@@ -23,4 +24,6 @@ window.MyLocalAIFirebase = {
   getRemoteConfig,
   fetchAndActivate,
   getValue,
+  onConfigUpdate,
+  activate,
 };

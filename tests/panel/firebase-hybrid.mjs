@@ -6,11 +6,11 @@ import assert from "node:assert/strict";
 import { bootPanel, until } from "../helpers/fake-panel.mjs";
 import { fakeFirebaseSdk, firebasePanelOptions, InferenceMode } from "./fake-firebase.mjs";
 
-async function firebasePanel({ route, jsonAnswer, remoteValues } = {}) {
-  const { sdk, calls } = fakeFirebaseSdk({ jsonAnswer, remoteValues });
+async function firebasePanel({ route, jsonAnswer, remoteValues, cloudFails } = {}) {
+  const { sdk, calls, publishRemoteValues } = fakeFirebaseSdk({ jsonAnswer, remoteValues, cloudFails });
   const panel = bootPanel(firebasePanelOptions(sdk, route ? { firebaseRoute: route } : {}));
   await until(() => panel.evaluate("activeBackend") === "firebase", "the Firebase provider");
-  return { panel, calls };
+  return { panel, calls, publishRemoteValues };
 }
 
 function findAll(element, test, found = []) {
@@ -98,6 +98,11 @@ const LONG_DOCUMENT = "The quarterly report covers revenue, hiring and risks. ".
 // ===================== REMOTE CONFIG: CLOUD MODEL NAMES =====================
 {
   const remoteValues = { cloud_model_fast: "gemini-3.6-flash-lite", cloud_model_frontier: "gemini-5-preview" };
+  for (const refused of ["gemini-nano-banana-2.1", "gemini-3.8-flash-tts", "gemini-3.1-flash-live-preview", "gemini-flash-latest", "gpt-4"]) {
+    const { panel } = await firebasePanel({ route: "prefer-cloud", remoteValues: { cloud_model_fast: refused } });
+    assert.equal(panel.evaluate("externalProvider.listModels().options[1].label"), "gemini-3.5-flash-lite",
+      `Remote Config can't switch the chat to ${refused}`);
+  }
   const { panel, calls } = await firebasePanel({ route: "prefer-cloud", remoteValues });
   assert.equal(calls.remoteConfigFetches, 1, "a cloud route reads the model names from Remote Config");
   await panel.evaluate('sendMessage("Hi")');
@@ -111,4 +116,94 @@ const LONG_DOCUMENT = "The quarterly report covers revenue, hiring and risks. ".
 {
   const { calls } = await firebasePanel({ route: "device", remoteValues: { cloud_model_fast: "gemini-3.6-flash-lite" } });
   assert.equal(calls.remoteConfigFetches, 0, "On-device only makes no Remote Config request");
+  assert.equal(calls.liveWatchers, 0, "and opens no live Remote Config stream");
+}
+
+// ===================== REMOTE CONFIG: A CONSOLE PUBLISH REACHES THE OPEN PANEL =====================
+{
+  const { panel, calls, publishRemoteValues } = await firebasePanel({ route: "prefer-cloud" });
+  assert.equal(calls.liveWatchers, 1, "a cloud route listens for Remote Config changes");
+  await publishRemoteValues({ cloud_model_fast: "gemini-3.5-flash" });
+  await until(() => panel.evaluate("externalProvider.listModels().options[1].label") === "gemini-3.5-flash", "the live model name");
+  await until(() => /gemini-3\.5-flash(?!-)/.test(panel.evaluate("backendHint.textContent")), "the header hint redrawn");
+  await panel.evaluate('sendMessage("Hi")');
+  assert.equal(calls.streams.at(-1).params.inCloudParams.model, "gemini-3.5-flash", "the next answer uses the published name");
+  assert.equal(calls.remoteConfigFetches, 1, "without a second fetch");
+
+  await publishRemoteValues({ cloud_model_fast: "gemini-3.6-flash-preview" });
+  for (let i = 0; i < 20; i++) await new Promise(setImmediate);
+  assert.equal(panel.evaluate("externalProvider.listModels().options[1].label"), "gemini-3.5-flash",
+    "a live update is checked like a fetched one: a preview model is refused");
+  await publishRemoteValues({ some_other_param: "x" });
+  assert.equal(panel.evaluate("externalProvider.listModels().options[1].label"), "gemini-3.5-flash", "other parameters are ignored");
+
+  panel.evaluate('localStorage.setItem("firebaseRoute", "device")');
+  await panel.evaluate("reloadExternalProvider()");
+  assert.equal(calls.liveStops, 1, "switching to On-device only closes the live stream");
+  panel.evaluate('localStorage.setItem("firebaseRoute", "prefer-cloud")');
+  await panel.evaluate("reloadExternalProvider()");
+  assert.equal(calls.liveWatchers, 2, "and a cloud route opens it again");
+}
+
+// ===================== CLOUD FIRST: A FAILED CLOUD CALL IS NOT HIDDEN =====================
+{
+  // The real SDK answers on-device when "Cloud first" can't reach the cloud (App Check 403…).
+  const { panel, calls } = await firebasePanel({ route: "prefer-cloud", cloudFails: true });
+  await panel.evaluate('sendMessage("What is your name?")');
+  assert.equal(calls.streams.at(-1).params.mode, InferenceMode.PREFER_IN_CLOUD);
+  const chip = chips(panel).at(-1);
+  assert.match(chip.textContent, /On-device · Gemini Nano · cloud failed/, "the chip says the cloud model did not answer");
+  assert.match(chip.title, /App Check/, "and points at the usual cause");
+  assert.match(panel.evaluate("tokenInfo.textContent"), /last answer: on-device \(Gemini Nano\) · cloud failed/);
+}
+{
+  const { panel } = await firebasePanel({ route: "prefer-device" });
+  await panel.evaluate('sendMessage("Hi")');
+  assert.doesNotMatch(chips(panel).at(-1).textContent, /cloud failed/, "On-device first answering on the device is normal");
+}
+
+// ===================== FIRST LAUNCH: "PRIVATE ONLY" OR "HYBRID" =====================
+// A first panel (nothing saved) asks before Firebase loads, so no request can happen first.
+async function firstLaunchPanel() {
+  const { sdk, calls } = fakeFirebaseSdk({ remoteValues: { cloud_model_fast: "gemini-3.6-flash-lite" } });
+  const panel = bootPanel(firebasePanelOptions(sdk));
+  await until(() => panel.element("#status-title").textContent === "How should MyLocalAI run?", "the first-launch question");
+  // Wait a few more turns: if init() did not wait for the answer, the backend would start now.
+  for (let i = 0; i < 20; i++) await new Promise(setImmediate);
+  assert.equal(panel.evaluate("activeBackend"), null, "no backend before the user picks");
+  assert.equal(calls.apps, 0, "Firebase is not even initialized before the choice");
+  assert.equal(calls.remoteConfigFetches, 0, "and nothing is fetched");
+  return { panel, calls };
+}
+const stored = (panel, key) => panel.evaluate(`localStorage.getItem(${JSON.stringify(key)})`);
+{
+  const { panel, calls } = await firstLaunchPanel();
+  panel.element("#btn-launch-private").fire("click");
+  await until(() => panel.evaluate("activeBackend") === "firebase", "the Firebase provider after Private only");
+  assert.equal(panel.element("#firebase-launch-choice").classList.contains("hidden"), true, "the question goes away");
+  assert.equal(stored(panel, "firebaseCloudSwitch"), "off", "Private only turns Cloud & internet off");
+  assert.equal(stored(panel, "firebaseRoute"), "device");
+  assert.equal(calls.remoteConfigFetches, 0, "Private only never asks Remote Config");
+  await panel.evaluate('sendMessage("Hi")');
+  assert.equal(calls.streams.at(-1).params.mode, InferenceMode.ONLY_ON_DEVICE, "answers stay on the device");
+}
+{
+  const { panel, calls } = await firstLaunchPanel();
+  panel.element("#btn-launch-hybrid").fire("click");
+  await until(() => panel.evaluate("activeBackend") === "firebase", "the Firebase provider after Hybrid");
+  assert.equal(stored(panel, "firebaseCloudSwitch"), "on", "Hybrid turns Cloud & internet on");
+  assert.equal(stored(panel, "firebaseRoute"), "prefer-device", "Hybrid is on-device first, cloud fallback");
+  assert.equal(calls.remoteConfigFetches, 1, "a cloud-capable route reads the model names");
+  await panel.evaluate('sendMessage("Hi")');
+  assert.equal(calls.streams.at(-1).params.mode, InferenceMode.PREFER_ON_DEVICE);
+  panel.element("#btn-launch-private").fire("click");
+  assert.equal(stored(panel, "firebaseRoute"), "prefer-device", "a stale button cannot change the answer later");
+}
+{
+  // Panels from before this question keep their saved setting and are not asked.
+  const { sdk } = fakeFirebaseSdk();
+  const panel = bootPanel(firebasePanelOptions(sdk, { firebaseCloudSwitch: "on" }));
+  await until(() => panel.evaluate("activeBackend") === "firebase", "the Firebase provider with a saved switch");
+  assert.notEqual(panel.element("#status-title").textContent, "How should MyLocalAI run?", "an existing user is not asked again");
+  assert.equal(stored(panel, "firebaseLaunchChoice"), null, "and no answer is invented for them");
 }

@@ -49,9 +49,9 @@ assert.match(edition.manifest.name, /Firebase/, "the edition needs its own name"
 assert.equal(/zero cloud/i.test(edition.manifest.description), false, "the description must not claim zero cloud");
 assert.ok(edition.manifest.description.length <= 132, "Chrome limits descriptions to 132 characters");
 const FIREBASE_HOSTS = ["https://firebasevertexai.googleapis.com/*", "https://firebaseremoteconfig.googleapis.com/*",
-  "https://firebaseinstallations.googleapis.com/*"];
+  "https://firebaseremoteconfigrealtime.googleapis.com/*", "https://firebaseinstallations.googleapis.com/*"];
 assert.deepEqual(edition.manifest.host_permissions, FIREBASE_HOSTS,
-  "only Firebase AI Logic and Remote Config (with the Installations API it needs) get host access");
+  "only Firebase AI Logic and Remote Config (its live stream, and the Installations API it needs) get host access");
 assert.ok(Number(edition.manifest.minimum_chrome_version) >= 139, "hybrid on-device inference needs Chrome 139+");
 
 // ===== Build output =====
@@ -97,6 +97,36 @@ assert.match(read(".gitignore"), /^firebase-settings\.local\.js$/m, ".gitignore 
   assert.equal(example.appCheckDebugToken, "", "the example must not carry an App Check debug token");
 }
 
+// ===== docs/remoteconfig.template.json matches what the extension reads =====
+// The file is imported into the Firebase console (Remote Config → Publish from a file), so a
+// renamed parameter or a typo would silently leave the built-in names in use.
+{
+  const template = JSON.parse(read("docs/remoteconfig.template.json"));
+  const { PARAMS } = (() => { const s = { window: {} }; vm.runInNewContext(read("providers/firebase-remote-config.js"), s); return s.window.MyLocalAIFirebaseRemoteConfig; })();
+  const { CLOUD_MODELS } = (() => { const s = { window: {} }; vm.runInNewContext(settingsJs, s); return s.window.MyLocalAIFirebaseSettings; })();
+  assert.deepEqual(Object.keys(template.parameters).sort(), Object.values(PARAMS).sort(),
+    "the template has exactly the parameters firebase-remote-config.js reads");
+  for (const [key, param] of Object.entries(PARAMS)) {
+    const entry = template.parameters[param];
+    assert.equal(entry.valueType, "STRING", `${param} is a string parameter`);
+    assert.equal(entry.defaultValue.value, CLOUD_MODELS[key].id, `${param} matches the built-in free-tier model`);
+  }
+}
+
+// ===== First launch asks "Private only" or "Hybrid" before Firebase loads =====
+{
+  const html = read("sidebar.html");
+  for (const id of ["firebase-launch-choice", "btn-launch-private", "btn-launch-hybrid"]) {
+    assert.ok(html.includes(`id="${id}"`), `sidebar.html should have #${id} for the first-launch question`);
+  }
+  assert.match(html, /Private only \(Nano\)/);
+  assert.match(html, /Hybrid \(Nano, then cloud if needed\)/);
+  const initBody = backendJs.slice(backendJs.indexOf("async function init("));
+  const asked = initBody.indexOf("await askLaunchChoice()");
+  assert.ok(asked > 0, "init() waits for the first-launch choice");
+  assert.ok(asked < initBody.indexOf("await ensureFirebaseServices()"), "the choice comes before Firebase is loaded");
+}
+
 // ===== Firebase AI Logic is imported and actually called at runtime =====
 const entryJs = read("tools/firebase-bundle/entry.js");
 assert.match(entryJs, /from "firebase\/ai"/, "the bundle imports firebase/ai");
@@ -108,9 +138,12 @@ assert.match(bundle, /firebasevertexai\.googleapis\.com/, "the bundled SDK calls
 assert.match(bundle, /firebaseremoteconfig\.googleapis\.com/, "the bundled SDK includes Remote Config");
 {
   const remoteConfigJs = read("providers/firebase-remote-config.js");
-  for (const call of ["sdk.getRemoteConfig(", "sdk.fetchAndActivate(", "sdk.getValue("]) {
+  for (const call of ["sdk.getRemoteConfig(", "sdk.fetchAndActivate(", "sdk.getValue(", "sdk.onConfigUpdate(", "sdk.activate("]) {
     assert.ok(remoteConfigJs.includes(call), `firebase-remote-config.js should call ${call}`);
   }
+  // Without these exports the live watcher would throw "sdk.onConfigUpdate is not a function".
+  assert.match(entryJs, /onConfigUpdate,\s*\n\s*activate,/, "the bundle exposes onConfigUpdate and activate");
+  assert.match(bundle, /firebaseremoteconfigrealtime\.googleapis\.com/, "the bundled SDK includes real-time Remote Config");
 }
 for (const call of ["sdk.initializeApp(", "sdk.getAI(", "new sdk.GoogleAIBackend()", "sdk.getGenerativeModel(",
   ".generateContentStream(", "sdk.initializeAppCheck(", ".initializeDeviceModel("]) {
@@ -249,6 +282,15 @@ assert.ok(sidebarJs.indexOf("function streamOllama(") < sidebarJs.indexOf("funct
   assert.equal(schema.additionalProperties, false, "the caller's schema is not modified");
 
   assert.equal(routing.describeAnswerSource({ onDevice: true }).kind, "device");
+  // "Cloud first" answering on the device means the SDK swallowed a cloud error.
+  assert.equal(routing.reasonAfterAnswer({ mode: "PREFER_IN_CLOUD", reason: "" }, true), "cloud-failed");
+  assert.equal(routing.reasonAfterAnswer({ mode: "PREFER_IN_CLOUD", reason: "" }, false), "");
+  assert.equal(routing.reasonAfterAnswer({ mode: "PREFER_ON_DEVICE", reason: "" }, true), "", "on-device first on the device is normal");
+  assert.equal(routing.reasonAfterAnswer({ mode: "ONLY_IN_CLOUD", reason: "too-long" }, false), "too-long");
+  const failed = routing.describeAnswerSource({ onDevice: true, cloudModelId: "m", reason: "cloud-failed" });
+  assert.equal(failed.kind, "device");
+  assert.match(failed.label, /cloud failed/);
+  assert.match(failed.title, /request to m failed/);
   assert.match(routing.describeAnswerSource({ onDevice: false, cloudModelId: "m", reason: "" }).label, /^☁️ Cloud · m$/);
 }
 assert.match(backendJs, /\.generateContent\(prompt/, "structured output calls Firebase AI Logic's generateContent");

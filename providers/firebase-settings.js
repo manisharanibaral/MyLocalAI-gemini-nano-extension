@@ -20,9 +20,9 @@
 
   // Names Remote Config may set (firebase-remote-config.js): stable Gemini text models only.
   // The production checklist rules out preview, experimental and -latest names, and image,
-  // speech and Live models do not fit a text chat.
+  // speech and Live models do not fit a text chat (Nano Banana is the image family).
   const ALLOWED_MODEL_NAME = /^gemini-[a-z0-9.-]+$/;
-  const REJECTED_MODEL_NAME = /preview|exp|latest|image|tts|live|audio/;
+  const REJECTED_MODEL_NAME = /preview|exp|latest|image|banana|tts|live|audio/;
 
   // Where answers run. "device" is the default and the only route that keeps chat text local.
   const ROUTES = {

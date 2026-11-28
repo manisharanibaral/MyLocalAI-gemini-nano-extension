@@ -40,9 +40,14 @@ const OLLAMA_HOSTS = ["http://localhost:11434/*", "http://127.0.0.1:11434/*"];
 // verified). Named in the Firebase AI Logic docs (FAQ "Required APIs", App Check page) and
 // matches DEFAULT_DOMAIN in the bundled SDK.
 const FIREBASE_AI_LOGIC_HOSTS = ["https://firebasevertexai.googleapis.com/*"];
-// Remote Config (cloud model names) and the Installations API it needs to identify the app.
-// Only reached on a route that uses the cloud (providers/firebase-remote-config.js).
-const FIREBASE_REMOTE_CONFIG_HOSTS = ["https://firebaseremoteconfig.googleapis.com/*", "https://firebaseinstallations.googleapis.com/*"];
+// Remote Config (cloud model names), its real-time update stream, and the Installations API it
+// needs to identify the app. Only reached on a route that uses the cloud
+// (providers/firebase-remote-config.js).
+const FIREBASE_REMOTE_CONFIG_HOSTS = [
+  "https://firebaseremoteconfig.googleapis.com/*",
+  "https://firebaseremoteconfigrealtime.googleapis.com/*",
+  "https://firebaseinstallations.googleapis.com/*",
+];
 
 export const EDITIONS = {
   nano: {

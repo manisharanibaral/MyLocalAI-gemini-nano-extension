@@ -17,7 +17,7 @@
   // prompt goes to the cloud instead of failing on the device. The hybrid SDK has no countTokens.
   const CHARS_PER_TOKEN = 3;
 
-  const REASONS = { none: "", tooLongForDevice: "too-long", tooLongAndCloudOff: "too-long-no-cloud" };
+  const REASONS = { none: "", tooLongForDevice: "too-long", tooLongAndCloudOff: "too-long-no-cloud", cloudFailed: "cloud-failed" };
 
   function estimateTokens(text) {
     return Math.ceil(String(text ?? "").length / CHARS_PER_TOKEN);
@@ -41,6 +41,14 @@
     return { mode: route.mode, reason: REASONS.none };
   }
 
+  // After the answer: on "Cloud first" the SDK answers on-device only when the cloud call failed
+  // (network, App Check 403, quota…), and it does so silently. Naming that reason keeps the chip
+  // honest: the user picked a cloud model and must see that it did not answer.
+  function reasonAfterAnswer(routing, answeredOnDevice) {
+    if (routing.mode === "PREFER_IN_CLOUD" && answeredOnDevice) return REASONS.cloudFailed;
+    return routing.reason;
+  }
+
   function tooLongForDeviceMessage(request) {
     const tokens = estimateTokens(request.promptText) + estimateTokens(request.systemPrompt);
     return `This message is too long for on-device Gemini Nano (~${tokens.toLocaleString("en-US")} tokens; ` +
@@ -50,6 +58,15 @@
 
   // The chip under each answer, so the user always sees whether their text left the device.
   function describeAnswerSource({ onDevice, cloudModelId, reason }) {
+    if (onDevice && reason === REASONS.cloudFailed) {
+      return {
+        kind: "device",
+        label: "⚡ On-device · Gemini Nano · cloud failed",
+        title: `The cloud request to ${cloudModelId} failed, so Gemini Nano answered on this computer instead. ` +
+          "Most often App Check rejected the request: register the panel's App Check debug token in the Firebase console " +
+          "(the panel's console shows the exact error).",
+      };
+    }
     if (onDevice) {
       return { kind: "device", label: "⚡ On-device · Gemini Nano", title: "Answered by Gemini Nano on this computer; the message did not leave it." };
     }
@@ -95,6 +112,7 @@
     ON_DEVICE_CONTEXT_TOKENS,
     estimateTokens,
     chooseRequestMode,
+    reasonAfterAnswer,
     tooLongForDeviceMessage,
     describeAnswerSource,
     toCloudSchema,

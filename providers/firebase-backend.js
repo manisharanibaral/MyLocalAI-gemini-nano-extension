@@ -32,6 +32,7 @@
   let cachedModel = null;           // { key, model } — reused so the SDK keeps a single on-device session
   let answerQueue = Promise.resolve();
   let lastInferenceSource = "";     // an sdk.InferenceSource value, for the footer label
+  let lastAnswerReason = "";        // a REASONS value, e.g. "cloud-failed", for the footer label
   let lastSetupError = "";
 
   // ===================== SETTINGS =====================
@@ -43,7 +44,7 @@
 
   // In providers/firebase-routing.js (per-request routing, answer labels, structured output).
   const {
-    REASONS, chooseRequestMode, tooLongForDeviceMessage, describeAnswerSource, structuredOutputParams,
+    REASONS, chooseRequestMode, reasonAfterAnswer, tooLongForDeviceMessage, describeAnswerSource, structuredOutputParams,
   } = window.MyLocalAIFirebaseRouting;
 
   // ===================== LOADING =====================
@@ -107,14 +108,39 @@
     });
   }
 
-  // Remote Config can rename the cloud models (firebase-remote-config.js). Asked once per panel,
-  // and only on a route that can reach the cloud, so "On-device only" makes no request.
+  // Remote Config can rename the cloud models (firebase-remote-config.js). Fetched once per panel
+  // and then watched live, only on a route that can reach the cloud, so "On-device only" makes
+  // no request and closes the live stream.
   let remoteModelNamesLoaded = false;
+  let stopWatchingModelNames = null;
+  let refreshSidebar = null; // the sidebar's onSettingsChanged, from bindSettingsUI
+
   async function loadRemoteModelNames() {
     if (remoteModelNamesLoaded) return;
     remoteModelNamesLoaded = true;
     const { sdk, app } = firebaseServices;
-    applyCloudModelNames(await window.MyLocalAIFirebaseRemoteConfig.fetchCloudModelNames(sdk, app));
+    const remoteConfig = window.MyLocalAIFirebaseRemoteConfig;
+    applyCloudModelNames(await remoteConfig.fetchCloudModelNames(sdk, app));
+    stopWatchingModelNames = remoteConfig.watchCloudModelNames(sdk, app, applyLiveModelNames);
+  }
+
+  function stopRemoteModelNames() {
+    stopWatchingModelNames?.();
+    stopWatchingModelNames = null;
+    remoteModelNamesLoaded = false; // a later cloud route fetches and watches again
+  }
+
+  // A console publish while the panel is open. The next answer already uses the new name (the
+  // model is rebuilt when its params change); the header and model menu are redrawn once the
+  // current answer finishes, because the sidebar's restart would stop it.
+  function applyLiveModelNames(names) {
+    if (Object.keys(applyCloudModelNames(names)).length === 0) return;
+    answerQueue.then(() => refreshSidebar?.());
+  }
+
+  function bindSettingsUIAndRefresh(options = {}) {
+    refreshSidebar = options.onSettingsChanged || null;
+    bindSettingsUI(options);
   }
 
   // ===================== ON-DEVICE MODEL =====================
@@ -245,7 +271,15 @@
       onText(fullText);
     }
     lastInferenceSource = source || sourceImpliedByMode(routing.mode);
-    return { content: fullText, reasoning: "", source: answerSource(routing.reason) };
+    lastAnswerReason = reasonAfterAnswer(routing, answeredOnDevice());
+    if (lastAnswerReason === REASONS.cloudFailed) {
+      console.warn("[MyLocalAI] Cloud first: the cloud request failed, so Gemini Nano answered. See the @firebase errors above (App Check 403 = debug token not registered).");
+    }
+    return { content: fullText, reasoning: "", source: answerSource(lastAnswerReason) };
+  }
+
+  function answeredOnDevice() {
+    return lastInferenceSource === firebaseServices.sdk.InferenceSource.ON_DEVICE;
   }
 
   // The user's route, adjusted for this one request (firebase-routing.js decides).
@@ -267,7 +301,7 @@
   function answerSource(reason) {
     if (!lastInferenceSource) return null;
     return describeAnswerSource({
-      onDevice: lastInferenceSource === firebaseServices.sdk.InferenceSource.ON_DEVICE,
+      onDevice: answeredOnDevice(),
       cloudModelId: CLOUD_MODELS[currentCloudModel()].id,
       reason,
     });
@@ -320,6 +354,7 @@
       deviceModel = await checkDeviceModel();
       const route = ROUTES[currentRoute()];
       if (route.usesCloud) await loadRemoteModelNames();
+      if (!route.usesCloud) stopRemoteModelNames();
       if (!route.usesCloud) await requireDeviceModel(settings, showProgress);
       cachedModel = null; // settings may have changed (Apply & Restart)
       await getModel(settings);
@@ -354,7 +389,7 @@
     const cloud = CLOUD_MODELS[currentCloudModel()].id;
     const onDevice = deviceModel.status === "available";
     return {
-      badge: `Firebase Hybrid · ${isCloudAllowed() ? route.badge : "Offline · on-device"}`,
+      badge: isCloudAllowed() ? "Firebase Hybrid" : "Firebase Hybrid",
       hint: route.usesCloud
         ? `Firebase AI Logic · Gemini Nano${onDevice ? "" : " (not ready)"} + cloud ${cloud}`
         : "Firebase AI Logic · Gemini Nano · on-device",
@@ -379,7 +414,7 @@
     if (!lastInferenceSource) return `${messageCount} messages`;
     // Compare with the SDK's constant: its values ("on_device") differ from the key names.
     const where = lastInferenceSource === firebaseServices?.sdk.InferenceSource.ON_DEVICE
-      ? "on-device (Gemini Nano)"
+      ? `on-device (Gemini Nano)${lastAnswerReason === REASONS.cloudFailed ? " · cloud failed" : ""}`
       : `cloud (${CLOUD_MODELS[currentCloudModel()].id})`;
     return `${messageCount} messages · last answer: ${where}`;
   }
@@ -428,7 +463,7 @@
     statusLine,
     errorTitle,
     helpLines,
-    bindSettingsUI,
+    bindSettingsUI: bindSettingsUIAndRefresh,
     listModels,
     selectModel,
     isCloudAllowed,          // exposed for tests/firebase-checks.mjs

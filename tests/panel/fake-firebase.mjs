@@ -13,13 +13,23 @@ export const InferenceSource = { ON_DEVICE: "on_device", IN_CLOUD: "in_cloud" };
 const plain = (value) => JSON.parse(JSON.stringify(value));
 
 // remoteValues: Remote Config parameters "set in the console", e.g. { cloud_model_fast: "gemini-…" }.
-export function fakeFirebaseSdk({ jsonAnswer = '{"action":"none"}', remoteValues = {} } = {}) {
-  const calls = { apps: 0, models: [], streams: [], json: [], remoteConfigFetches: 0 };
+// cloudFails: the cloud call fails (e.g. App Check 403); like the real SDK, "Cloud first" then
+// answers on-device without saying why.
+export function fakeFirebaseSdk({ jsonAnswer = '{"action":"none"}', remoteValues = {}, cloudFails = false } = {}) {
+  const calls = { apps: 0, models: [], streams: [], json: [], remoteConfigFetches: 0, liveWatchers: 0, liveStops: 0 };
+  const liveObservers = new Set();
 
   function sourceFor(mode) {
-    return mode === InferenceMode.ONLY_IN_CLOUD || mode === InferenceMode.PREFER_IN_CLOUD
-      ? InferenceSource.IN_CLOUD
-      : InferenceSource.ON_DEVICE;
+    if (mode === InferenceMode.ONLY_IN_CLOUD) return InferenceSource.IN_CLOUD;
+    if (mode === InferenceMode.PREFER_IN_CLOUD) return cloudFails ? InferenceSource.ON_DEVICE : InferenceSource.IN_CLOUD;
+    return InferenceSource.ON_DEVICE;
+  }
+
+  // A publish in the console while the panel is open: the values change, then every live
+  // observer hears which keys changed (the real SDK has fetched them but not activated them).
+  async function publishRemoteValues(values) {
+    Object.assign(remoteValues, values);
+    for (const observer of liveObservers) await observer.next({ getUpdatedKeys: () => new Set(Object.keys(values)) });
   }
 
   const sdk = {
@@ -32,6 +42,12 @@ export function fakeFirebaseSdk({ jsonAnswer = '{"action":"none"}', remoteValues
     getAI: (app) => ({ app }),
     getRemoteConfig: () => ({ settings: {} }),
     fetchAndActivate: async () => { calls.remoteConfigFetches += 1; return true; },
+    activate: async () => true,
+    onConfigUpdate(_remoteConfig, observer) {
+      calls.liveWatchers += 1;
+      liveObservers.add(observer);
+      return () => { calls.liveStops += 1; liveObservers.delete(observer); };
+    },
     getValue: (_remoteConfig, key) => ({
       asString: () => remoteValues[key] ?? "",
       getSource: () => (key in remoteValues ? "remote" : "static"),
@@ -56,7 +72,7 @@ export function fakeFirebaseSdk({ jsonAnswer = '{"action":"none"}', remoteValues
       };
     },
   };
-  return { sdk, calls };
+  return { sdk, calls, publishRemoteValues };
 }
 
 // Everything the panel needs to boot as the firebase-hybrid edition with this fake SDK.

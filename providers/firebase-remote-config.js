@@ -6,7 +6,8 @@
  * parameters below under Firebase console → Remote Config (Client); unset ones keep the names
  * built into firebase-settings.js.
  *
- * Only fetched when the user's route can reach the cloud: "On-device only" stays offline.
+ * Only fetched (and only watched for live changes) when the user's route can reach the cloud:
+ * "On-device only" stays offline.
  * providers/firebase-backend.js calls it through window.MyLocalAIFirebaseRemoteConfig.
  */
 (() => {
@@ -44,5 +45,29 @@
     return names;
   }
 
-  window.MyLocalAIFirebaseRemoteConfig = { PARAMS, fetchCloudModelNames };
+  // Real-time Remote Config: a publish in the console reaches an open panel within seconds,
+  // instead of after MIN_FETCH_INTERVAL_MS. On connecting, the server also reports its latest
+  // template version, so a cached copy older than the console's is replaced right away.
+  // Calls onNames with the new names (same shape as fetchCloudModelNames) when one of PARAMS
+  // changed. Returns a function that closes the stream.
+  function watchCloudModelNames(sdk, app, onNames) {
+    try {
+      const remoteConfig = sdk.getRemoteConfig(app);
+      const watched = new Set(Object.values(PARAMS));
+      return sdk.onConfigUpdate(remoteConfig, {
+        next: async (update) => {
+          if (![...update.getUpdatedKeys()].some((key) => watched.has(key))) return;
+          await sdk.activate(remoteConfig);
+          onNames(readCloudModelNames(sdk, remoteConfig));
+        },
+        error: (e) => console.warn("[MyLocalAI] Remote Config live updates stopped:", e.message),
+        complete: () => { },
+      });
+    } catch (e) {
+      console.warn("[MyLocalAI] Remote Config live updates unavailable:", e.message);
+      return () => { };
+    }
+  }
+
+  window.MyLocalAIFirebaseRemoteConfig = { PARAMS, fetchCloudModelNames, watchCloudModelNames };
 })();

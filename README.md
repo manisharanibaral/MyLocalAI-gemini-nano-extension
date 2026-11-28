@@ -148,19 +148,26 @@ Set up **Gemini Nano**, **Ollama**, or both, using the steps above. When the pan
 
 **How Firebase AI Logic is used.** [providers/firebase-backend.js](providers/firebase-backend.js) loads the bundled Firebase JS SDK ([vendor/firebase-ai.js](vendor/firebase-ai.js), built from [tools/firebase-bundle](tools/firebase-bundle)). It calls `initializeApp`, `initializeAppCheck`, `getAI(app, { backend: new GoogleAIBackend() })` and `getGenerativeModel(ai, { mode, inCloudParams, onDeviceParams })`, then streams every answer with `generateContentStream` and asks for JSON with `generateContent`. [providers/firebase-remote-config.js](providers/firebase-remote-config.js) calls `getRemoteConfig`, `fetchAndActivate` and `getValue`.
 
+**First launch: you choose.** The first time the panel opens it asks, before Firebase is even loaded:
+
+- **🔒 Private only (Nano)**: *Cloud & internet* off, *On-device only*. Nothing leaves the device.
+- **☁️ Hybrid (Nano, then cloud if needed)**: *Cloud & internet* on, *On-device first, cloud Gemini fallback*. It works on machines without Gemini Nano and on documents too long for it.
+
+The click also counts as the gesture Chrome needs to start a Gemini Nano download. Either choice can be changed any time in Settings; *Reset all data & settings* asks again. Panels that already had a saved route or switch are not asked.
+
 **Where answers run** (Settings → *Firebase AI Logic · hybrid*):
 
 | Setting | InferenceMode | Cloud? |
 |---|---|---|
-| On-device only *(default)* | `ONLY_ON_DEVICE` | Never |
-| On-device first, cloud Gemini fallback | `PREFER_ON_DEVICE` (`ONLY_IN_CLOUD` for a message too long for Nano) | Only when on-device can't answer, or the message is too long for it |
+| On-device only *(default; "Private only")* | `ONLY_ON_DEVICE` | Never |
+| On-device first, cloud Gemini fallback *("Hybrid")* | `PREFER_ON_DEVICE` (`ONLY_IN_CLOUD` for a message too long for Nano) | Only when on-device can't answer, or the message is too long for it |
 | Cloud Gemini first, on-device fallback | `PREFER_IN_CLOUD` | Yes; on-device only if the cloud call fails |
 
 **Cloud & internet switch.** The first control in that card turns every Firebase cloud feature off in one click. While it is off, every answer runs on-device (`ONLY_ON_DEVICE`) whatever route you picked, cloud models disappear from the model pill, and the panel makes no network request at all. It takes effect at once and keeps your open chat; turning it back on restores the route you had chosen.
 
 Cloud models (free tier only): **Fast**: `gemini-3.5-flash-lite` (default), **Frontier**: `gemini-4-hydrogen`. Remote Config can rename them (setup step 6).
 
-> ☁️ **Cloud is opt-in and off by default.** With a cloud route selected, your messages, any selected page text, and any attached image or screenshot are sent to Google's Gemini Developer API through Firebase AI Logic (`firebasevertexai.googleapis.com`). On-device only never sends chat text anywhere.
+> ☁️ **Cloud is opt-in.** It is off unless you pick *Hybrid* on first launch or a cloud route in Settings. With a cloud route selected, your messages, any selected page text, and any attached image or screenshot are sent to Google's Gemini Developer API through Firebase AI Logic (`firebasevertexai.googleapis.com`). On-device only never sends chat text anywhere.
 
 **Setup**
 
@@ -179,7 +186,8 @@ Cloud models (free tier only): **Fast**: `gemini-3.5-flash-lite` (default), **Fr
    - Leave `appCheckDebugToken: ""`, open the side panel, right-click → **Inspect**, and copy the `App Check debug token: …` line from the Console.
    - Register it in Firebase console → **Security → App Check → Apps → Manage debug tokens**.
    - Optionally paste it into `appCheckDebugToken` so it survives reinstalls. Treat it like a password: anyone holding it can use your project's App Check. `--zip` never packs `firebase-settings.local.js`, so a zip you share or upload carries neither the token nor your config.
-6. **Remote Config (optional).** In Firebase console → **Remote Config** (Client), add string parameters `cloud_model_fast` and/or `cloud_model_frontier` with a stable Gemini model name (e.g. `gemini-3.5-flash-lite`) and publish. The panel reads them when a cloud route is in use, at most once an hour, and keeps the built-in names when a parameter is unset, the fetch fails, or the name isn't a stable Gemini text model (preview, experimental, `-latest`, image, speech and Live models are refused). If your API key is restricted, allow the Firebase Remote Config and Firebase Installations APIs too.
+6. **Remote Config (optional).** In Firebase console → **Remote Config** (Client), add string parameters `cloud_model_fast` and/or `cloud_model_frontier` with a stable Gemini model name (e.g. `gemini-3.5-flash-lite`) and publish. Or import [docs/remoteconfig.template.json](docs/remoteconfig.template.json) (⋮ → **Publish from a file**), which sets both to the built-in free-tier names. Don't pick a model the models page marks *billing required* on the free Spark plan: cloud answers would fail. The panel reads them when a cloud route is in use and then listens for changes (real-time Remote Config), so a publish reaches an open panel within seconds; it keeps the built-in names when a parameter is unset, the fetch fails, or the name isn't a stable Gemini text model (preview, experimental, `-latest`, image, speech and Live models are refused). If your API key is restricted, allow the Firebase Remote Config, Remote Config Realtime and Firebase Installations APIs too.
+7. **Check the setup without a browser:** `node scripts/firebase-diagnose.mjs` calls App Check (with your `appCheckDebugToken`), Installations, Remote Config and its real-time stream with the values in `firebase-settings.local.js`, and prints each status (secrets redacted). An App Check `403` means the debug token isn't registered for this app ID. On **Cloud first**, such a failure makes the SDK answer on-device instead; the answer's chip then reads **cloud failed**.
 
 **How chat history reaches the model.** Firebase on-device inference is single-turn (each call is a fresh Chrome session). Each request therefore sends **one prompt**: the newest earlier turns, at most 20 messages and about 12,000 characters, labelled `User:` / `Assistant:`, followed by your new message. The system prompt goes in the model's own slot (on-device `initialPrompts`, cloud `systemInstruction`). The cloud route gets the same prompt, so an answer doesn't depend on which side served it. With **Responses at once** above 1, answers are generated one after another, because the SDK replaces its on-device session on every call.
 
