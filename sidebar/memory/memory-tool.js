@@ -69,10 +69,11 @@ function parseMemoryToolCall(text) {
 }
 
 // Runs a parsed call against the store. Returns { action, ok, memory?, error? }.
-function applyMemoryToolCall(call) {
+// chatId tags a new memory with the chat it was learned in (see deleteMemoriesFromChat).
+function applyMemoryToolCall(call, chatId = null) {
   switch (call.action) {
     case "create":
-      return { action: "create", ...createMemory({ title: call.title, description: call.description, source: "auto" }) };
+      return { action: "create", ...createMemory({ title: call.title, description: call.description, source: "auto", chatId }) };
     case "update":
       return { action: "update", ...updateMemory(call.id, { title: call.title, description: call.description }) };
     case "delete":
@@ -95,7 +96,7 @@ async function learnFromMessage(userText, chatId) {
     console.warn("[MyLocalAI] Memory tool failed:", err.message);
     return;
   }
-  const result = applyMemoryToolCall(call);
+  const result = applyMemoryToolCall(call, chatId);
   if (chatId === currentSessionId) reportMemoryResult(result);
   refreshMemoryPanel();
 }

@@ -47,16 +47,19 @@ const fullMemories = (count) => JSON.stringify(Array.from({ length: count }, (_,
   assert.equal(call(panel, `deleteMemory("${id}")`).error, "not-found");
 }
 {
-  const { panel } = await ollamaPanel({ storage: { memories: fullMemories(20) } });
-  assert.equal(panel.evaluate("isMemoryFull()"), true, "20 memories is the count limit");
+  const { panel } = await ollamaPanel({ storage: { memories: fullMemories(79) } });
+  assert.equal(panel.evaluate("MAX_MEMORIES"), 80, "up to 80 memories are kept");
+  assert.equal(panel.evaluate("isMemoryFull()"), false, "79 memories still leaves room");
+  assert.equal(call(panel, 'createMemory({ title: "Number 80", description: "Still fits." })').ok, true);
+  assert.equal(panel.evaluate("isMemoryFull()"), true, "80 memories is the count limit");
   assert.equal(call(panel, 'createMemory({ title: "One more", description: "Too many." })').error, "full");
 }
 {
   // The character budget fills before the count does when memories are long.
-  const big = JSON.stringify(Array.from({ length: 7 }, (_, i) =>
+  const big = JSON.stringify(Array.from({ length: 21 }, (_, i) =>
     ({ id: `m${i}`, title: `Title ${i}`, description: "x".repeat(280), createdAt: 1, updatedAt: 1 })));
   const { panel } = await ollamaPanel({ storage: { memories: big } });
-  assert.equal(call(panel, "memoryUsage()").count, 7);
+  assert.equal(call(panel, "memoryUsage()").count, 21);
   assert.equal(call(panel, 'createMemory({ title: "More", description: "' + "y".repeat(100) + '" })').error, "full",
     "the total character limit is enforced too");
 }
@@ -101,6 +104,38 @@ const fullMemories = (count) => JSON.stringify(Array.from({ length: count }, (_,
     "saved memories are in the next request's system prompt");
 }
 {
+  // Deleting a chat forgets the memories learned in it, but keeps the user's own and other chats'.
+  const { panel } = await ollamaPanel({
+    memoryCall: { action: "create", title: "Job", description: "Works night shifts as a nurse." },
+  });
+  call(panel, 'createMemory({ title: "Own fact", description: "Added by hand." })');
+  call(panel, 'createMemory({ title: "Other chat", description: "Learned elsewhere.", source: "auto", chatId: "other-chat" })');
+  await panel.evaluate(`sendMessage("I'm a nurse")`);
+  await until(() => stored(panel).length === 3, "the memory tool's save");
+  const chatId = panel.evaluate("currentSessionId");
+  const learned = stored(panel).find((m) => m.title === "Job");
+  assert.equal(learned.chatId, chatId, "a learned memory remembers its chat");
+  assert.equal(stored(panel).find((m) => m.title === "Own fact").chatId, undefined, "the user's own memories belong to no chat");
+  assert.equal(panel.evaluate(`memoriesFromChat("${chatId}").length`), 1);
+
+  panel.evaluate(`deleteConversation("${chatId}")`);
+  const titles = stored(panel).map((m) => m.title).sort();
+  assert.deepEqual(titles, ["Other chat", "Own fact"], "only the deleted chat's memories are forgotten");
+  assert.equal(panel.evaluate('deleteMemoriesFromChat("no-such-chat")'), 0, "a chat with no memories deletes nothing");
+  assert.equal(panel.evaluate("deleteMemoriesFromChat(null)"), 0, "a missing chat id never matches the user's memories");
+}
+{
+  // The delete dialog says when memories will be forgotten too.
+  let message = "";
+  const ollama = fakeOllama();
+  const panel = bootPanel({ globals: { fetch: ollama.fetch, confirm: (text) => { message = text; return false; } } });
+  await until(() => panel.evaluate("activeBackend") === "ollama", "the Ollama backend");
+  panel.evaluate('confirmDeleteChat("Trip", 2)');
+  assert.match(message, /The 2 memories learned in it will be forgotten too/);
+  panel.evaluate('confirmDeleteChat("Trip", 0)');
+  assert.equal(message.includes("memor"), false, "no memory note when none were learned");
+}
+{
   // The model can forget a memory by id.
   const { panel } = await ollamaPanel({ storage: { memories: fullMemories(1) }, memoryCall: { action: "delete", id: "m0" } });
   await panel.evaluate('sendMessage("please forget my fact 0")');
@@ -110,13 +145,13 @@ const fullMemories = (count) => JSON.stringify(Array.from({ length: count }, (_,
 {
   // When memory is full the user is asked to delete some.
   const { panel } = await ollamaPanel({
-    storage: { memories: fullMemories(20) },
+    storage: { memories: fullMemories(80) },
     memoryCall: { action: "create", title: "Pet", description: "Has a cat." },
   });
   await panel.evaluate('sendMessage("my cat is called Miso")');
   await until(() => notes(panel).length === 1, "the memory-full note");
   assert.match(notes(panel)[0], /Memory is full[\s\S]*delete some/, "the note asks the user to delete some memories");
-  assert.equal(stored(panel).length, 20, "nothing is added past the limit");
+  assert.equal(stored(panel).length, 80, "nothing is added past the limit");
 }
 {
   // Messages that say nothing about the user, or "Learn about me" off, cost no extra model call.
@@ -169,7 +204,7 @@ const fullMemories = (count) => JSON.stringify(Array.from({ length: count }, (_,
   assert.equal(title.textContent, "Fact 0");
   assert.equal(description.textContent, "Detail 0.");
   assert.ok(date.textContent.length > 0, "each card shows its date");
-  assert.match(panel.element("#memory-usage").textContent, /^3 of 20 · /, "the usage line shows the count limit");
+  assert.match(panel.element("#memory-usage").textContent, /^3 of 80 · /, "the usage line shows the count limit");
 
   // Add through the form.
   panel.element("#btn-add-memory").fire("click");
@@ -205,7 +240,7 @@ const fullMemories = (count) => JSON.stringify(Array.from({ length: count }, (_,
   assert.equal(stored(panel).length, 1, "cancelling the confirmation keeps the memory");
 }
 {
-  const { panel } = await ollamaPanel({ storage: { memories: fullMemories(20) } });
+  const { panel } = await ollamaPanel({ storage: { memories: fullMemories(80) } });
   panel.evaluate("renderMemoryPanel()");
   assert.equal(panel.element("#btn-add-memory").disabled, true, "Add is off when memory is full");
   assert.equal(panel.element("#memory-limit-note").classList.contains("hidden"), false);

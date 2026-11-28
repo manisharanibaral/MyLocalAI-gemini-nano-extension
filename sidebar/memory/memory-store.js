@@ -4,7 +4,8 @@
 "use strict";
 
 // ===================== STORAGE =====================
-// A memory is { id, title, description, createdAt, updatedAt, source: "auto" | "user" }.
+// A memory is { id, title, description, createdAt, updatedAt, source: "auto" | "user", chatId? }.
+// chatId is set only on memories the model learned, so deleting that chat can forget them too.
 const MEMORY_STORAGE_KEY = "memories";
 const MEMORY_LEARNING_KEY = "memoryLearning";
 
@@ -85,7 +86,7 @@ function checkMemoryFields({ title, description }) {
 // ===================== CHANGES =====================
 // Each returns { ok: true, memory } or { ok: false, error }, where error is one of
 // "empty" | "sensitive" | "full" | "duplicate" | "not-found" | "storage".
-function createMemory({ title, description, source = "user" }) {
+function createMemory({ title, description, source = "user", chatId = null }) {
   const checked = checkMemoryFields({ title, description });
   if (checked.error) return { ok: false, error: checked.error };
 
@@ -95,6 +96,7 @@ function createMemory({ title, description, source = "user" }) {
 
   const now = Date.now();
   const memory = { id: createMemoryId(memories), ...checked.fields, createdAt: now, updatedAt: now, source };
+  if (chatId) memory.chatId = chatId;
   return saveMemoryList([memory, ...memories], memory);
 }
 
@@ -116,6 +118,20 @@ function deleteMemory(id) {
   const memory = memories.find(m => m.id === id);
   if (!memory) return { ok: false, error: "not-found" };
   return saveMemoryList(memories.filter(m => m !== memory), memory);
+}
+
+// A memory learned in a chat belongs to it: deleting the chat forgets what was learned there.
+// Memories the user added in the Memory panel have no chatId, so they are never touched.
+function memoriesFromChat(chatId, memories = readMemories()) {
+  return chatId ? memories.filter(m => m.chatId === chatId) : [];
+}
+
+// Returns how many memories were deleted (0 when none, or when storage failed).
+function deleteMemoriesFromChat(chatId) {
+  const memories = readMemories();
+  const learned = memoriesFromChat(chatId, memories);
+  if (!learned.length) return 0;
+  return writeMemories(memories.filter(m => !learned.includes(m))) ? learned.length : 0;
 }
 
 // True when the list still respects both limits after adding `fields`.

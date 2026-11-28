@@ -258,11 +258,13 @@ assert.match(renderHistoryList, /<svg xmlns="http:\/\/www\.w3\.org\/2000\/svg"/,
 assert.match(renderHistoryList, /delBtn\.setAttribute\("aria-label", "Delete chat"\)/, "the icon-only delete button needs an accessible name");
 
 // History: deleting a chat has no undo, so the trash button asks first (deleteConversation itself stays dialog-free).
-assert.match(renderHistoryList, /if \(!confirmDeleteChat\(title\)\) return;\s*deleteConversation\(s\.id\)/,
+assert.match(renderHistoryList, /if \(!confirmDeleteChat\(title, memoriesFromChat\(s\.id\)\.length\)\) return;\s*deleteConversation\(s\.id\)/,
   "the trash button should confirm before deleting a chat");
 assert.match(functionBody(sidebarJs, "confirmDeleteChat"), /confirm\(/, "confirmDeleteChat should ask the user");
 assert.equal(/confirm\(/.test(functionBody(sidebarJs, "deleteConversation")), false,
   "deleteConversation must not open a dialog; callers confirm first");
+assert.match(functionBody(sidebarJs, "deleteConversation"), /deleteMemoriesFromChat\(id\)/,
+  "deleting a chat forgets the memories learned in it");
 
 // History: past chats open from the keyboard too, not only with a mouse click.
 assert.match(renderHistoryList, /contentDiv\.setAttribute\("role", "button"\)/, "a history row should be announced as a button");

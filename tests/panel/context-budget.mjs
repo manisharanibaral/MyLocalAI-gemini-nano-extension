@@ -63,21 +63,23 @@ async function nanoPanel() {
 // ===================== OLLAMA: THINKING SWITCH =====================
 {
   const { ollama, panel } = await ollamaPanel({ capabilities: ["thinking"] });
-  await send(panel, "quick one");
-  assert.equal(lastBody(ollama).think, false, "thinking is off by default, and said so, since Ollama would think otherwise");
-  assert.equal(lastBody(ollama).options.num_predict, 1500, "no thinking means no extra token allowance");
-
-  panel.element("#ollama-thinking").value = "on";
-  panel.evaluate("saveOllamaThinkingSetting()");
+  assert.equal(panel.element("#ollama-thinking").value, "on", "the Thinking setting starts On");
   await send(panel, "hard one");
-  assert.equal(lastBody(ollama).think, true, "turning it on applies from the next message");
-  assert.equal(lastBody(ollama).options.num_predict, 1500 + panel.evaluate("THINKING_TOKEN_ALLOWANCE"));
-  assert.equal(panel.evaluate('localStorage.getItem("ollamaThinking")'), "on", "the choice is remembered");
+  assert.equal(lastBody(ollama).think, true, "thinking is on by default for a model that can think");
+  assert.equal(lastBody(ollama).options.num_predict, 1500 + panel.evaluate("THINKING_TOKEN_ALLOWANCE"),
+    "thinking gets the extra token allowance");
+
+  panel.element("#ollama-thinking").value = "off";
+  panel.evaluate("saveOllamaThinkingSetting()");
+  await send(panel, "quick one");
+  assert.equal(lastBody(ollama).think, false, "turning it off applies from the next message, and is said so, since Ollama would think otherwise");
+  assert.equal(lastBody(ollama).options.num_predict, 1500, "no thinking means no extra token allowance");
+  assert.equal(panel.evaluate('localStorage.getItem("ollamaThinking")'), "off", "the choice is remembered");
 }
 {
-  const { ollama, panel } = await ollamaPanel({ capabilities: ["thinking"] }, { ollamaThinking: "on" });
+  const { ollama, panel } = await ollamaPanel({ capabilities: ["thinking"] }, { ollamaThinking: "off" });
   await send(panel, "hi");
-  assert.equal(lastBody(ollama).think, true, "a saved On is loaded at start");
+  assert.equal(lastBody(ollama).think, false, "a saved Off is kept over the new default");
 }
 {
   const { ollama, panel } = await ollamaPanel({}, { ollamaThinking: "on" });

@@ -37,9 +37,10 @@ const OLLAMA_TOKENS_PER_IMAGE = 600;
 // 4; 3 stays on the safe side for code and other languages.
 const CHARS_PER_TOKEN = 3;
 
-// "Thinking" setting (Ollama models that can reason before answering). Off by default:
-// the reasoning is often longer than the answer, so short chats wait for nothing.
-const DEFAULT_OLLAMA_THINKING = "off";
+// "Thinking" setting (Ollama models that can reason before answering). On by default, as
+// reasoning gives better answers; the user can turn it off when short chats feel slow.
+// Models that cannot think are unaffected (see ollamaThinkingEnabled).
+const DEFAULT_OLLAMA_THINKING = "on";
 const MAX_SAVED_SESSIONS = 50;
 const MAX_SAVED_PROMPTS = 5;
 // The model stays in RAM for as long as a session/loaded model exists, so release it when idle.
@@ -99,9 +100,10 @@ const DEFAULT_SYSTEM_PROMPT = `You are MyLocalAI, a helpful, accurate assistant.
 
 // ===================== MEMORY (facts the user lets MyLocalAI keep) =====================
 // Every memory is added to the system prompt, so these caps keep it small enough for Gemini
-// Nano's context window: at most ~2,000 characters (~650 tokens) however many there are.
-const MAX_MEMORIES = 20;
-const MAX_MEMORY_TOTAL_CHARS = 2000;
+// Nano's context window: at most ~6,000 characters (~2,000 tokens) however many there are.
+// Most facts are short ("Job: Works as a nurse."), so 80 of them fit the character budget.
+const MAX_MEMORIES = 80;
+const MAX_MEMORY_TOTAL_CHARS = 6000;
 const MAX_MEMORY_TITLE_CHARS = 60;
 const MAX_MEMORY_DESCRIPTION_CHARS = 240;
 // Only this much of a message is shown to the memory tool; long pastes are rarely about the user.

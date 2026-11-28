@@ -104,7 +104,7 @@ function renderHistoryList() {
     delBtn.addEventListener("click", (e) => {
       e.stopPropagation();
       if (isGenerating) return;
-      if (!confirmDeleteChat(title)) return;
+      if (!confirmDeleteChat(title, memoriesFromChat(s.id).length)) return;
       deleteConversation(s.id);
     });
 
@@ -114,14 +114,20 @@ function renderHistoryList() {
 
 // Deleting has no undo, so the user confirms first, as they do for saved prompts.
 // Kept out of deleteConversation so code (and tests) can still delete without a dialog.
-function confirmDeleteChat(title) {
-  return confirm(`Delete the chat "${title}"? This cannot be undone.`);
+// learnedCount: memories saved from this chat, which are deleted with it.
+function confirmDeleteChat(title, learnedCount = 0) {
+  const memoryNote = learnedCount
+    ? ` The ${learnedCount === 1 ? "memory" : `${learnedCount} memories`} learned in it will be forgotten too.`
+    : "";
+  return confirm(`Delete the chat "${title}"?${memoryNote} This cannot be undone.`);
 }
 
 function deleteConversation(id) {
   chatSessions = readStoredSessions().filter(s => s.id !== id);
   saveAllSessions();
   renderHistoryList();
+  // What the model learned in a chat goes with it; memories the user added stay.
+  if (deleteMemoriesFromChat(id)) refreshMemoryPanel();
 
   if (id === currentSessionId) {
     startNewChat();
