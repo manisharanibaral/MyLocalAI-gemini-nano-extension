@@ -150,13 +150,19 @@ function messageText(message) {
   return String(message.content ?? "");
 }
 
+// A user prompt with selected text or an image note puts them first and the typed question
+// after this marker. Titles and the chat view show only the question.
+const USER_QUESTION_MARKER = "User Question:\n";
+
+function userQuestionText(message) {
+  const content = messageText(message);
+  const at = content.indexOf(USER_QUESTION_MARKER);
+  return at >= 0 ? content.slice(at + USER_QUESTION_MARKER.length) : content;
+}
+
 function extractTitle(history) {
   const firstUserMsg = history.find(m => m.role === "user");
   if (!firstUserMsg) return "New Chat";
-  let content = messageText(firstUserMsg);
-  if (content.includes("User Question:\n")) {
-    content = content.split("User Question:\n")[1];
-  }
-  content = content.trim();
+  const content = userQuestionText(firstUserMsg).trim();
   return content.length > 35 ? content.substring(0, 35) + "..." : content;
 }

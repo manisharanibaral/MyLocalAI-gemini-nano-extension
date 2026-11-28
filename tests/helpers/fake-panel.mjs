@@ -27,6 +27,7 @@ class FakeElement {
   get innerHTML() { return this.textContent; }
   set innerHTML(html) { this.textContent = html; this.children = []; }
   append(...nodes) { this.children.push(...nodes); }
+  prepend(...nodes) { this.children.unshift(...nodes); }
   appendChild(node) { this.children.push(node); return node; }
   replaceChildren(...nodes) { this.children = nodes; }
   addEventListener(type, handler) { (this.listeners[type] ||= []).push(handler); }

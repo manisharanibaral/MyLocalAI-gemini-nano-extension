@@ -269,3 +269,42 @@
   0% { opacity: 1; } 50% { opacity: 0; }
 }
 
+
+/* ---------- SELECTED TEXT QUOTED IN A USER MESSAGE ---------- */
+.msg-selection {
+  margin-bottom: 8px;
+  padding: 6px 10px;
+  border-left: 3px solid var(--accent-from);
+  border-radius: 6px;
+  background: hsla(230, 20%, 6%, 0.35);
+}
+.msg-selection-label {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+.msg-selection-text {
+  margin-top: 2px;
+  font-size: 12px;
+  color: var(--text-secondary);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  display: -webkit-box;
+  -webkit-line-clamp: 4;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.msg-selection.expanded .msg-selection-text { display: block; max-height: 40vh; overflow-y: auto; }
+.msg-selection-toggle {
+  margin-top: 4px;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--accent-to);
+  font-family: var(--font);
+  font-size: 11px;
+  cursor: pointer;
+}
+.msg-selection-toggle:focus-visible { outline: 2px solid var(--border-focus); border-radius: 4px; }

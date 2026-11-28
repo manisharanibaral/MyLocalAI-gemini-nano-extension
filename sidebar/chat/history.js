@@ -14,17 +14,12 @@ function loadConversation(id) {
   messagesEl.classList.remove("hidden");
 
   chatHistory.forEach(msg => {
-    if (msg.role === "user" || msg.role === "assistant") {
-      const role = msg.role === "assistant" ? "ai" : "user";
-      let displayContent = msg.content;
-      if (msg.role === "user" && displayContent.includes("User Question:\n")) {
-        displayContent = displayContent.split("User Question:\n")[1];
-      }
-      if (msg.role === "assistant" && msg.variants?.length > 1) {
-        appendSavedResponseGroup(msg);
-        return;
-      }
-      appendMessage(role, displayContent, false, msg.reasoning, msg.images);
+    if (msg.role === "user") {
+      appendUserMessage(msg);
+    } else if (msg.role === "assistant" && msg.variants?.length > 1) {
+      appendSavedResponseGroup(msg);
+    } else if (msg.role === "assistant") {
+      appendMessage("ai", msg.content, false, msg.reasoning);
     }
   });
 

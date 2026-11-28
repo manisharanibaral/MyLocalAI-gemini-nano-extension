@@ -120,6 +120,8 @@ assert.match(functionBody(sidebarJs, "saveSettings"), /tabScreenshotMode/, "the 
     ${functionSource(sidebarJs, "messageText")}
     ${functionSource(sidebarJs, "upgradeLegacyImageMessage")}
     const LEGACY_IMAGE_MARKER = "__IMG__";
+    const USER_QUESTION_MARKER = "User Question:\\n";
+    ${functionSource(sidebarJs, "userQuestionText")}
     function extractTitle(history) {${functionBody(sidebarJs, "extractTitle")}}
     return extractTitle(history.map(upgradeLegacyImageMessage));`);
   assert.equal(titleOf([{ role: "user", content: "summarise", images: ["/9j/4AAQSkZJRgABAQ"] }]), "summarise");

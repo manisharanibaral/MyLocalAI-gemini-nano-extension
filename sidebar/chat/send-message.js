@@ -45,16 +45,17 @@ async function sendMessageNow(text) {
 
   const imagesToSend = attachedImages;
   const typedPrompt = text.trim() || (attachedImagesNote ? "Summarise this page." : "Describe this image.");
+  const selectedText = currentContextText;
   const promptPreamble = [];
-  if (currentContextText) {
-    promptPreamble.push(selectedContextBlock(currentContextText, currentContextCut));
+  if (selectedText) {
+    promptPreamble.push(selectedContextBlock(selectedText, currentContextCut));
     // Clear context UI after using it
     clearContext();
   }
   if (attachedImagesNote) promptPreamble.push(attachedImagesNote);
   // extractTitle() relies on "User Question:" to title a chat with the typed text only.
   const finalPrompt = promptPreamble.length
-    ? `${promptPreamble.join("\n\n")}\n\nUser Question:\n${typedPrompt}`
+    ? `${promptPreamble.join("\n\n")}\n\n${USER_QUESTION_MARKER}${typedPrompt}`
     : typedPrompt;
 
   if (await makeRoomInNano(finalPrompt, imagesToSend)) return;
@@ -63,12 +64,13 @@ async function sendMessageNow(text) {
   welcomeScreen.classList.add("hidden");
   messagesEl.classList.remove("hidden");
 
-  // UI display keeps the user's typed text; history keeps the exact prompt
-  // sent to the backend so selected context is preserved for Ollama.
-  appendMessage("user", typedPrompt, false, "", imagesToSend);
-  chatHistory.push(imagesToSend.length
-    ? { role: "user", content: finalPrompt, images: imagesToSend }
-    : { role: "user", content: finalPrompt });
+  // History keeps the exact prompt sent to the backend (so Ollama sees the selected text again);
+  // selectedText is kept apart too, so the chat can show it above the question.
+  const userMessage = { role: "user", content: finalPrompt };
+  if (imagesToSend.length) userMessage.images = imagesToSend;
+  if (selectedText) userMessage.selectedText = selectedText;
+  appendUserMessage(userMessage);
+  chatHistory.push(userMessage);
   // The reply belongs to this chat even if the user starts or opens another one meanwhile.
   const chat = { id: currentSessionId, history: chatHistory };
 

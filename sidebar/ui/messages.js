@@ -41,6 +41,46 @@ function appendMessage(role, text, streaming = false, reasoning = "", images = [
   return bubble;
 }
 
+// A user message as saved in chatHistory: the typed question, with the selected text it was
+// asked about (if any) quoted above it, so the chat shows what the model was given.
+function appendUserMessage(message) {
+  const bubble = appendMessage("user", userQuestionText(message), false, "", message.images || []);
+  if (message.selectedText) bubble.prepend(createSelectedTextQuote(message.selectedText));
+  return bubble;
+}
+
+// Long selections are clamped to a few lines by CSS until "Show all" is pressed.
+// textContent, never HTML, because the selection comes from a web page.
+const SELECTION_PREVIEW_CHARS = 240;
+
+function createSelectedTextQuote(text) {
+  const quote = document.createElement("div");
+  quote.className = "msg-selection";
+  const label = document.createElement("div");
+  label.className = "msg-selection-label";
+  label.textContent = "Selected text";
+  const body = document.createElement("blockquote");
+  body.className = "msg-selection-text";
+  body.textContent = text;
+  quote.append(label, body);
+  if (text.length > SELECTION_PREVIEW_CHARS) quote.appendChild(createSelectionToggle(quote));
+  return quote;
+}
+
+function createSelectionToggle(quote) {
+  const toggle = document.createElement("button");
+  toggle.type = "button";
+  toggle.className = "msg-selection-toggle";
+  toggle.textContent = "Show all";
+  toggle.setAttribute("aria-expanded", "false");
+  toggle.addEventListener("click", () => {
+    const expanded = quote.classList.toggle("expanded");
+    toggle.textContent = expanded ? "Show less" : "Show all";
+    toggle.setAttribute("aria-expanded", String(expanded));
+  });
+  return toggle;
+}
+
 // A short line from MyLocalAI itself (not the model); shown in the chat but never saved.
 function appendChatNote(text) {
   const note = document.createElement("div");
