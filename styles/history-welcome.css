@@ -1,0 +1,165 @@
+/* ---------- HISTORY PANEL ---------- */
+.history-panel { max-height: 50vh; overflow-y: auto; }
+.history-panel-label { margin-bottom: 8px; }
+.history-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.history-empty {
+  padding: 16px 12px;
+  text-align: center;
+  font-size: 12px;
+  color: var(--text-muted);
+  border: 1px dashed var(--border-subtle);
+  border-radius: var(--radius-sm);
+}
+
+.history-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 12px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: all var(--duration) var(--ease-out);
+}
+.history-item:hover {
+  border-color: var(--border-focus);
+  background: hsla(260, 60%, 55%, 0.1);
+}
+.history-item.active {
+  border-color: var(--accent-from);
+  background: hsla(260, 60%, 55%, 0.15);
+}
+
+.history-item-content {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.history-item-title {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.history-item-date {
+  font-size: 10px;
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+
+.btn-delete-chat {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  padding: 4px;
+  cursor: pointer;
+  border-radius: 4px;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+/* Keyboard users need to see which row or button has focus. */
+.history-item-content:focus-visible,
+.btn-delete-chat:focus-visible {
+  outline: 2px solid var(--border-focus);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+.btn-delete-chat:hover {
+  color: hsl(0, 72%, 55%);
+  background: hsla(0, 72%, 55%, 0.1);
+}
+.btn-delete-chat svg {
+  width: 14px;
+  height: 14px;
+}
+
+/* ---------- WELCOME SCREEN ---------- */
+.welcome-screen {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  overflow: hidden;
+  padding: 24px 16px;
+}
+.welcome-screen.hidden { display: none; }
+
+.welcome-glow {
+  position: absolute;
+  width: 260px; height: 260px;
+  border-radius: 50%;
+  background: radial-gradient(circle, hsla(260,80%,60%,0.12) 0%, transparent 70%);
+  top: 50%; left: 50%;
+  transform: translate(-50%, -55%);
+  animation: pulse-glow 4s ease-in-out infinite;
+  pointer-events: none;
+}
+@keyframes pulse-glow {
+  0%, 100% { transform: translate(-50%, -55%) scale(1); opacity: 0.7; }
+  50%      { transform: translate(-50%, -55%) scale(1.15); opacity: 1; }
+}
+
+.welcome-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 14px;
+  position: relative;
+  z-index: 1;
+}
+.welcome-icon svg { width: 56px; height: 56px; filter: drop-shadow(0 4px 16px hsla(260,80%,60%,0.3)); }
+
+.welcome-title {
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  background: var(--accent-grad);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+.welcome-sub { color: var(--text-secondary); font-size: 13px; max-width: 280px; line-height: 1.5; }
+
+.welcome-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: center;
+  margin-top: 6px;
+}
+.chip {
+  padding: 8px 14px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 100px;
+  background: var(--bg-glass);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background var(--duration), color var(--duration), border-color var(--duration), transform var(--duration) var(--ease-out);
+  white-space: nowrap;
+}
+.chip:hover {
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+  border-color: var(--border-focus);
+  transform: translateY(-2px);
+}
+.chip:active { transform: translateY(0) scale(0.97); }
+

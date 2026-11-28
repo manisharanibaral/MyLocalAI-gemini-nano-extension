@@ -5,10 +5,16 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>MyLocalAI — Gemini Nano Chat</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="sidebar.css" />
+  <link rel="stylesheet" href="styles/base.css" />
+  <link rel="stylesheet" href="styles/settings.css" />
+  <link rel="stylesheet" href="styles/history-welcome.css" />
+  <link rel="stylesheet" href="styles/memory.css" />
+  <link rel="stylesheet" href="styles/messages.css" />
+  <link rel="stylesheet" href="styles/markdown.css" />
+  <link rel="stylesheet" href="styles/input-bar.css" />
+  <link rel="stylesheet" href="styles/attachments.css" />
+  <link rel="stylesheet" href="styles/model-switcher.css" />
+  <link rel="stylesheet" href="styles/utility.css" />
 </head>
 
 <body>
@@ -16,26 +22,30 @@
   <div id="status-overlay" class="status-overlay hidden">
     <div class="status-card">
       <div class="status-icon-wrap">
-        <svg id="status-spinner" class="status-spinner" viewBox="0 0 50 50">
-          <circle cx="25" cy="25" r="20" fill="none" stroke-width="4" stroke="url(#grad)" stroke-linecap="round"
-            stroke-dasharray="90 150" stroke-dashoffset="0" />
-          <defs>
-            <linearGradient id="grad" x1="0%" y1="0%" x2="100%" y2="0%">
-              <stop offset="0%" stop-color="#8B5CF6" />
-              <stop offset="100%" stop-color="#06B6D4" />
-            </linearGradient>
-          </defs>
-        </svg>
+        <svg id="status-spinner" class="status-spinner" viewBox="0 0 50 50"><circle cx="25" cy="25" r="20" fill="none" stroke-width="4" stroke="url(#grad)" stroke-linecap="round"
+            stroke-dasharray="90 150" stroke-dashoffset="0" /><defs><linearGradient id="grad" x1="0%" y1="0%" x2="100%" y2="0%"><stop offset="0%" stop-color="#8B5CF6" /><stop offset="100%" stop-color="#06B6D4" /></linearGradient></defs></svg>
         <svg id="status-error-icon" class="status-error-icon hidden" viewBox="0 0 24 24" fill="none" stroke="#F87171"
-          stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <circle cx="12" cy="12" r="10" />
-          <line x1="15" y1="9" x2="9" y2="15" />
-          <line x1="9" y1="9" x2="15" y2="15" />
-        </svg>
+          stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10" /><line x1="15" y1="9" x2="9" y2="15" /><line x1="9" y1="9" x2="15" y2="15" /></svg>
       </div>
       <h2 id="status-title" class="status-title">Initializing…</h2>
       <p id="status-message" class="status-message">Looking for an available AI backend</p>
       <button id="status-retry-btn" class="btn-retry hidden">Retry</button>
+      <!-- Firebase hybrid edition: the first-launch question, shown by firebase-settings.js. -->
+      <div id="firebase-launch-choice" class="status-choice hidden" role="group" aria-label="How MyLocalAI runs">
+        <button id="btn-launch-private" class="status-choice-btn">
+          <span class="status-choice-title">🔒 Private only (Nano)</span>
+          <span class="status-choice-note">Gemini Nano on this device. Nothing is sent anywhere.</span>
+        </button>
+        <button id="btn-launch-hybrid" class="status-choice-btn">
+          <span class="status-choice-title">☁️ Hybrid (Nano, then cloud if needed)</span>
+          <span class="status-choice-note">Gemini Nano first. If it isn't available or a message is too long, it goes to Google's Gemini API through Firebase.</span>
+        </button>
+      </div>
+      <!-- Firebase hybrid edition: shown by firebase-backend.js when on-device Gemini Nano is unavailable. -->
+      <div id="firebase-cloud-optin" class="status-optin hidden">
+        <button id="btn-firebase-enable-cloud" class="btn-retry">Allow cloud fallback &amp; retry</button>
+        <p class="status-optin-note">☁️ Sends your messages to Google's Gemini API via Firebase when on-device isn't available. Change it any time in Settings.</p>
+      </div>
     </div>
   </div>
 
@@ -65,22 +75,16 @@
       </div>
       <div class="header-actions">
         <button id="btn-clear" class="icon-btn" title="New chat" aria-label="New chat">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
-            stroke-linejoin="round">
-            <path d="M12 20h9" />
-            <path d="M16.5 3.5a2.121 2.121 0 013 3L7 19l-4 1 1-4L16.5 3.5z" />
-          </svg>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9" /><path d="M16.5 3.5a2.121 2.121 0 013 3L7 19l-4 1 1-4L16.5 3.5z" /></svg>
         </button>
         <button id="btn-history" class="icon-btn" title="Chat History" aria-label="Chat History">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
-            stroke-linejoin="round">
-            <circle cx="12" cy="12" r="10"></circle>
-            <polyline points="12 6 12 12 16 14"></polyline>
-          </svg>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
+        </button>
+        <button id="btn-memory" class="icon-btn" title="Memory" aria-label="Memory" aria-controls="memory-panel">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18h6" /><path d="M10 22h4" /><path d="M12 2a7 7 0 0 0-4 12.7c.6.5 1 1.3 1 2.1V17h6v-.2c0-.8.4-1.6 1-2.1A7 7 0 0 0 12 2z" /></svg>
         </button>
         <button id="btn-settings" class="icon-btn" title="Settings" aria-label="Settings">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
-            stroke-linejoin="round">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <circle cx="12" cy="12" r="3" />
             <path
               d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z" />
@@ -102,25 +106,22 @@
               <label class="settings-label" for="saved-prompts">Saved prompts</label>
               <button id="btn-save-prompt" class="icon-btn icon-btn-sm" title="Save current prompt"
                 aria-label="Save current prompt">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
-                  stroke-linejoin="round">
-                  <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path>
-                  <polyline points="17 21 17 13 7 13 7 21"></polyline>
-                  <polyline points="7 3 7 8 15 8"></polyline>
-                </svg>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path><polyline points="17 21 17 13 7 13 7 21"></polyline><polyline points="7 3 7 8 15 8"></polyline></svg>
+              </button>
+              <button id="btn-delete-prompt" class="icon-btn icon-btn-sm" title="Delete the selected saved prompt"
+                aria-label="Delete the selected saved prompt">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
               </button>
             </div>
             <div class="select-wrap">
               <select id="saved-prompts" class="settings-input">
                 <option value="" disabled selected>Select a saved prompt…</option>
               </select>
-              <svg class="select-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <polyline points="6 9 12 15 18 9"></polyline>
-              </svg>
+              <svg class="select-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
             </div>
           </div>
           <div class="settings-group">
-            <label class="settings-label" for="sys-prompt">System prompt</label>
+            <label class="settings-label" for="sys-prompt">System prompt <span class="settings-hint">· used after Apply &amp; Restart</span></label>
             <textarea id="sys-prompt" class="settings-textarea" rows="3"
               placeholder="e.g. You are a concise coding assistant…"></textarea>
           </div>
@@ -146,7 +147,7 @@
           </div>
           <div class="settings-group">
             <span class="settings-label" id="response-count-label">Responses at once</span>
-            <!-- Radio inputs styled as a segmented control; sidebar.js reads the checked value. -->
+            <!-- Radio inputs styled as a segmented control; sidebar/core/settings.js reads the checked value. -->
             <div class="segmented" role="radiogroup" aria-labelledby="response-count-label">
               <label><input type="radio" name="response-count" value="1" checked /><span>1</span></label>
               <label><input type="radio" name="response-count" value="2" /><span>2</span></label>
@@ -155,6 +156,18 @@
               <label><input type="radio" name="response-count" value="5" /><span>5</span></label>
             </div>
             <p class="settings-hint">Pick the best of several parallel answers. More answers use more memory and take longer.</p>
+          </div>
+          <div class="settings-group">
+            <label class="settings-label" for="answer-length">Answer length <span class="settings-hint">· used after Apply &amp; Restart</span></label>
+            <div class="select-wrap">
+              <select id="answer-length" class="settings-input">
+                <option value="short">Short</option>
+                <option value="normal" selected>Normal (default)</option>
+                <option value="long">Long</option>
+              </select>
+              <svg class="select-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
+            </div>
+            <p class="settings-hint">Short and Normal stop run-on answers; with the Firebase cloud model that also keeps the cost down.</p>
           </div>
         </section>
 
@@ -171,9 +184,7 @@
                   <option value="15">After 15 minutes</option>
                   <option value="30">After 30 minutes</option>
                 </select>
-                <svg class="select-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <polyline points="6 9 12 15 18 9"></polyline>
-                </svg>
+                <svg class="select-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
               </div>
             </div>
             <div class="settings-group flex-1">
@@ -184,9 +195,7 @@
                   <option value="follow">Every page</option>
                   <option value="manual">Only with +</option>
                 </select>
-                <svg class="select-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <polyline points="6 9 12 15 18 9"></polyline>
-                </svg>
+                <svg class="select-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
               </div>
             </div>
           </div>
@@ -197,12 +206,52 @@
           <h2 id="ollama-settings-label" class="settings-card-title">Ollama · fallback for non-Chrome browsers</h2>
           <div class="settings-group">
             <label class="settings-label" for="ollama-model">Model</label>
-            <!-- value/placeholder are filled from DEFAULT_OLLAMA_* in sidebar.js -->
+            <!-- value/placeholder are filled from DEFAULT_OLLAMA_* in sidebar/core/config.js -->
             <input id="ollama-model" type="text" class="settings-input" />
           </div>
           <div class="settings-group">
             <label class="settings-label" for="ollama-url">Server URL</label>
             <input id="ollama-url" type="text" class="settings-input" />
+          </div>
+          <div class="settings-group">
+            <label class="settings-label" for="ollama-thinking">Thinking <span class="settings-hint">· slower, better on hard questions; from the next message</span></label>
+            <div class="select-wrap"><select id="ollama-thinking" class="settings-input"><option value="on" selected>On (default), for models that can reason first</option><option value="off">Off, faster replies</option></select><svg class="select-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg></div>
+          </div>
+        </section>
+
+        <!-- Firebase hybrid edition only: firebase-backend.js un-hides and wires this card. -->
+        <section id="firebase-settings" class="settings-card hidden" aria-labelledby="firebase-settings-label">
+          <h2 id="firebase-settings-label" class="settings-card-title">Firebase AI Logic · hybrid</h2>
+          <!-- One switch for everything that can reach the internet; firebase-backend.js wires it. -->
+          <label class="settings-switch" for="firebase-cloud-switch">
+            <span class="settings-switch-text">
+              <span class="settings-label">Cloud &amp; internet</span>
+              <span class="settings-hint">Off: Firebase cloud is never called, so nothing leaves this device. Answers use on-device Gemini Nano only.</span>
+            </span>
+            <input id="firebase-cloud-switch" type="checkbox" role="switch" checked />
+            <span class="switch-track" aria-hidden="true"></span>
+          </label>
+          <div class="settings-group">
+            <label class="settings-label" for="firebase-route">Where answers run</label>
+            <div class="select-wrap">
+              <select id="firebase-route" class="settings-input">
+                <option value="device">On-device only (default, private)</option>
+                <option value="prefer-device">On-device first, cloud Gemini fallback</option>
+                <option value="prefer-cloud">Cloud Gemini first, on-device fallback</option>
+              </select>
+              <svg class="select-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
+            </div>
+            <p class="settings-hint">☁️ Cloud options send your messages, page context and attached images to Google's Gemini Developer API through Firebase. Off by default.</p>
+          </div>
+          <div class="settings-group">
+            <label class="settings-label" for="firebase-cloud-model">Cloud model</label>
+            <div class="select-wrap">
+              <select id="firebase-cloud-model" class="settings-input">
+                <option value="fast">Fast · gemini-3.5-flash-lite</option>
+                <option value="frontier">Frontier · gemini-4-hydrogen</option>
+              </select>
+              <svg class="select-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
+            </div>
           </div>
         </section>
 
@@ -221,6 +270,37 @@
       </div>
     </div>
 
+    <!-- MEMORY PANEL: what MyLocalAI remembers about the user; sidebar/ui/memory-panel.js fills it. -->
+    <div id="memory-panel" class="settings-panel memory-panel hidden" role="region" aria-labelledby="memory-panel-title">
+      <div class="memory-header">
+        <div class="memory-header-text">
+          <h2 id="memory-panel-title" class="settings-section-label memory-title">Memory</h2>
+          <span id="memory-usage" class="memory-usage"></span>
+        </div>
+        <button id="btn-add-memory" class="btn-card-action" type="button">+ Add</button>
+      </div>
+      <div class="memory-meter" aria-hidden="true"><div id="memory-meter-fill" class="memory-meter-fill"></div></div>
+      <p id="memory-limit-note" class="memory-limit-note hidden" role="status"></p>
+      <label class="settings-switch" for="memory-learning">
+        <span class="settings-switch-text">
+          <span class="settings-label">Learn about me</span>
+          <span class="settings-hint">After a reply, the model may save, update or forget one fact from what you typed. Selected text and pages are never used.</span>
+        </span>
+        <input id="memory-learning" type="checkbox" role="switch" checked />
+        <span class="switch-track" aria-hidden="true"></span>
+      </label>
+      <form id="memory-form" class="memory-form hidden">
+        <input id="memory-title" class="settings-input" type="text" maxlength="60" placeholder="Title, e.g. Job" aria-label="Memory title" />
+        <textarea id="memory-description" class="settings-textarea" rows="2" maxlength="240"
+          placeholder="e.g. Works as a nurse on night shifts." aria-label="Memory description"></textarea>
+        <p id="memory-form-error" class="memory-form-error" role="alert"></p>
+        <div class="memory-form-actions">
+          <button id="btn-cancel-memory" class="btn-viewer" type="button">Cancel</button>
+          <button class="btn-card-action" type="submit">Save</button>
+        </div>
+      </form>
+      <div id="memory-list" class="memory-list" role="list" aria-label="Saved memories"></div>
+    </div>
     <!-- WELCOME SCREEN -->
     <div id="welcome-screen" class="welcome-screen">
       <div class="welcome-glow"></div>
@@ -263,22 +343,14 @@
       <!-- CONTEXT CARD -->
       <div id="context-card" class="context-card hidden">
         <span class="context-icon">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
-            stroke-linejoin="round">
-            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
-            <polyline points="14 2 14 8 20 8"></polyline>
-            <line x1="16" y1="13" x2="8" y2="13"></line>
-            <line x1="16" y1="17" x2="8" y2="17"></line>
-            <polyline points="10 9 9 9 8 9"></polyline>
-          </svg>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
         </span>
-        <span id="context-text" class="context-text"></span>
+        <span class="context-body">
+          <span id="context-text" class="context-text"></span>
+          <span id="context-note" class="context-note hidden" role="status"></span>
+        </span>
         <button id="btn-clear-context" class="btn-clear-context" title="Clear context" aria-label="Clear context">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
-            stroke-linejoin="round">
-            <line x1="18" y1="6" x2="6" y2="18"></line>
-            <line x1="6" y1="6" x2="18" y2="18"></line>
-          </svg>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
         </button>
       </div>
 
@@ -287,26 +359,20 @@
         <span class="context-text">Add a screenshot of this page to your message automatically?</span>
         <button id="btn-allow-screenshots" class="btn-card-action" type="button">Allow</button>
         <button id="btn-dismiss-screenshot-access" class="btn-clear-context" title="Not now" aria-label="Not now">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
-            stroke-linejoin="round">
-            <line x1="18" y1="6" x2="6" y2="18"></line>
-            <line x1="6" y1="6" x2="18" y2="18"></line>
-          </svg>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
         </button>
       </div>
 
       <!-- IMAGE PREVIEW CARD -->
       <div id="image-preview-card" class="context-card hidden">
-        <div class="img-thumb">
-          <img id="image-preview-img" src="" alt="Attached image preview" />
-        </div>
-        <span class="context-text img-preview-text">Attached image</span>
+        <!-- One thumbnail per attached image; sidebar/attachments/images.js fills it. -->
+        <div id="image-preview-thumbs" class="img-thumbs"></div>
+        <!-- The dot and Stop button show only while a page is being captured (.capturing). -->
+        <span class="capture-dot" aria-hidden="true"></span>
+        <span class="context-text img-preview-text" aria-live="polite">Attached image</span>
+        <button id="btn-stop-capture" class="btn-card-action" type="button">Stop &amp; save</button>
         <button id="btn-clear-image" class="btn-clear-context" title="Clear image" aria-label="Clear image">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
-            stroke-linejoin="round">
-            <line x1="18" y1="6" x2="6" y2="18"></line>
-            <line x1="6" y1="6" x2="18" y2="18"></line>
-          </svg>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
         </button>
       </div>
 
@@ -315,46 +381,41 @@
         <div id="attach-wrap" class="attach-wrap">
           <button id="btn-attach" class="icon-btn icon-btn-input" title="Add image" aria-label="Add image"
             aria-haspopup="menu" aria-expanded="false" aria-controls="attach-menu">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
-              stroke-linejoin="round">
-              <line x1="12" y1="5" x2="12" y2="19"></line>
-              <line x1="5" y1="12" x2="19" y2="12"></line>
-            </svg>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
           </button>
           <div id="attach-menu" class="attach-menu hidden" role="menu">
             <button id="btn-upload-img" class="attach-menu-item" role="menuitem">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
-                stroke-linejoin="round">
-                <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
-                <circle cx="8.5" cy="8.5" r="1.5"></circle>
-                <polyline points="21 15 16 10 5 21"></polyline>
-              </svg>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><circle cx="8.5" cy="8.5" r="1.5"></circle><polyline points="21 15 16 10 5 21"></polyline></svg>
               Upload image
             </button>
             <button id="btn-screenshot-tab" class="attach-menu-item" role="menuitem">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
-                stroke-linejoin="round">
-                <rect x="2" y="4" width="20" height="14" rx="2"></rect>
-                <line x1="8" y1="21" x2="16" y2="21"></line>
-                <line x1="12" y1="18" x2="12" y2="21"></line>
-              </svg>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="14" rx="2"></rect><line x1="8" y1="21" x2="16" y2="21"></line><line x1="12" y1="18" x2="12" y2="21"></line></svg>
               Screenshot this tab
+            </button>
+            <button id="btn-screenshot-page" class="attach-menu-item" role="menuitem">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="2" width="12" height="20" rx="2"></rect><line x1="6" y1="9" x2="18" y2="9"></line><line x1="6" y1="15" x2="18" y2="15"></line></svg>
+              Screenshot whole page
             </button>
           </div>
         </div>
         <input type="file" id="file-upload" accept="image/*" hidden />
         <textarea id="user-input" class="user-input" rows="1" placeholder="Ask anything…" autocomplete="off"></textarea>
+        <!-- MODEL SWITCHER: pill beside the send button showing the answering model; model-switcher.js builds the menu.
+             Hidden by sidebar/ui/switch-model.js in editions with only one model to pick. -->
+        <div id="model-switcher" class="model-switcher hidden">
+          <button id="btn-model" class="model-pill" type="button" title="Switch model" aria-haspopup="menu"
+            aria-expanded="false" aria-controls="model-menu">
+            <span id="model-pill-label" class="model-pill-label">Model</span>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+              stroke-linejoin="round" class="model-pill-chevron"><polyline points="6 9 12 15 18 9"></polyline></svg>
+          </button>
+          <div id="model-menu" class="model-menu hidden" role="menu" aria-label="Choose a model"></div>
+        </div>
         <button id="btn-send" class="btn-send" title="Send" aria-label="Send message" disabled>
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
-            stroke-linejoin="round">
-            <line x1="22" y1="2" x2="11" y2="13" />
-            <polygon points="22 2 15 22 11 13 2 9 22 2" />
-          </svg>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13" /><polygon points="22 2 15 22 11 13 2 9 22 2" /></svg>
         </button>
         <button id="btn-stop" class="btn-stop hidden" title="Stop generating" aria-label="Stop generating">
-          <svg viewBox="0 0 24 24" fill="currentColor">
-            <rect x="6" y="6" width="12" height="12" rx="2" />
-          </svg>
+          <svg viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="2" /></svg>
         </button>
       </div>
       <p class="input-hint"><span id="backend-hint">100% on-device</span> · <span id="token-info"
@@ -362,10 +423,63 @@
     </div>
   </div>
 
-  <script src="purify.min.js"></script>
-  <script src="marked.umd.js"></script>
+  <!-- Full-size view of an attached image; sidebar/attachments/image-viewer.js drives it. -->
+  <dialog id="image-viewer" class="image-viewer" aria-labelledby="image-viewer-title">
+    <div class="image-viewer-bar">
+      <span id="image-viewer-title" class="image-viewer-title"></span>
+      <button id="btn-viewer-remove" class="btn-viewer" type="button">Remove</button>
+      <button id="btn-viewer-close" class="btn-viewer" type="button" aria-label="Close preview">✕</button>
+    </div>
+    <div class="image-viewer-stage"><img id="image-viewer-img" alt="" /></div>
+    <div id="image-viewer-nav" class="image-viewer-bar">
+      <button id="btn-viewer-prev" class="btn-viewer" type="button">‹ Previous</button>
+      <button id="btn-viewer-next" class="btn-viewer" type="button">Next ›</button>
+    </div>
+  </dialog>
+  <script src="vendor/purify.min.js"></script>
+  <script src="vendor/marked.umd.js"></script>
   <script src="config.js"></script>
-  <script src="sidebar.js"></script>
+  <!-- Registers optional providers; loads the Firebase SDK only when config.js enables "firebase". -->
+  <script src="providers/firebase-prompt.js"></script>
+  <script src="providers/firebase-settings.js"></script>
+  <script src="providers/firebase-routing.js"></script>
+  <script src="providers/firebase-remote-config.js"></script>
+  <script src="providers/firebase-backend.js"></script>
+  <script src="features/model-switcher.js"></script>
+  <script src="features/capture-indicator.js"></script>
+  <script src="features/full-page-capture.js"></script>
+  <!-- One shared global scope, so order matters: core first, main.js (which starts the panel) last. -->
+  <script src="sidebar/core/dom-refs.js"></script>
+  <script src="sidebar/core/config.js"></script>
+  <script src="sidebar/core/state.js"></script>
+  <script src="sidebar/core/browser.js"></script>
+  <script src="sidebar/core/settings.js"></script>
+  <script src="sidebar/chat/session-storage.js"></script>
+  <script src="sidebar/chat/history.js"></script>
+  <script src="sidebar/backends/nano.js"></script>
+  <script src="sidebar/backends/nano-memory.js"></script>
+  <script src="sidebar/backends/ollama.js"></script>
+  <script src="sidebar/backends/ollama-request.js"></script>
+  <script src="sidebar/backends/provider-hook.js"></script>
+  <script src="sidebar/backends/structured-output.js"></script>
+  <script src="sidebar/backends/lifecycle.js"></script>
+  <script src="sidebar/memory/memory-store.js"></script>
+  <script src="sidebar/memory/memory-tool.js"></script>
+  <script src="sidebar/chat/compaction.js"></script>
+  <script src="sidebar/chat/send-message.js"></script>
+  <script src="sidebar/ui/backend-ui.js"></script>
+  <script src="sidebar/ui/switch-model.js"></script>
+  <script src="sidebar/ui/messages.js"></script>
+  <script src="sidebar/ui/response-actions.js"></script>
+  <script src="sidebar/ui/rendering.js"></script>
+  <script src="sidebar/ui/status.js"></script>
+  <script src="sidebar/ui/prompt-bar.js"></script>
+  <script src="sidebar/ui/memory-panel.js"></script>
+  <script src="sidebar/attachments/images.js"></script>
+  <script src="sidebar/attachments/image-viewer.js"></script>
+  <script src="sidebar/attachments/tab-screenshots.js"></script>
+  <script src="sidebar/attachments/screenshot-actions.js"></script>
+  <script src="sidebar/events.js"></script>
+  <script src="sidebar/main.js"></script>
 </body>
-
 </html>

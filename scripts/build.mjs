@@ -1,35 +1,53 @@
 #!/usr/bin/env node
 /**
- * Builds the three MyLocalAI editions from the shared source in the repo root.
+ * Builds the MyLocalAI editions from the shared source in the repo root.
  *
- *   node scripts/build.mjs            → dist/mylocalai-{nano,ollama,mixed}/
- *   node scripts/build.mjs --zip      → also dist/mylocalai-<edition>.zip (needs `zip`)
+ *   node scripts/build.mjs            → dist/mylocalai-{nano,ollama,mixed,firebase-hybrid}/
+ *   node scripts/build.mjs --zip      → also dist/mylocalai-<edition>.zip (needs `zip`; never
+ *                                       contains an edition's local files, see optionalFiles)
  *   node scripts/build.mjs nano       → build only the listed edition(s)
  *
  * Each edition gets its own manifest.json (name, permissions) and config.js
  * (which backends the sidebar may use). Everything else is copied as-is.
  */
-import { cpSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { execFileSync } from "node:child_process";
-import { dirname, join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const DIST = join(ROOT, "dist");
 
-// Files the extension actually loads at runtime.
-const SHARED_FILES = [
+// Files the extension actually loads at runtime (exported for tests/firebase-checks.mjs).
+export const SHARED_FILES = [
+  // Entry points Chrome loads by path stay in the repo root.
   "background.js",
   "page-watch.js",
   "sidebar.html",
-  "sidebar.css",
-  "sidebar.js",
-  "purify.min.js",
-  "marked.umd.js",
+  // Whole folders, so a new file in one of them ships without editing this list.
+  "sidebar", // the side-panel app
+  "features", // self-contained modules the panel calls
+  // Extra backends. Inert unless config.js lists them; the Firebase SDK bundle in vendor/
+  // (built by tools/firebase-bundle) is loaded by the provider only then.
+  "providers",
+  "styles",
+  "vendor",
   "icons",
 ];
 
 const OLLAMA_HOSTS = ["http://localhost:11434/*", "http://127.0.0.1:11434/*"];
+// Firebase AI Logic API: the proxy the SDK calls for cloud Gemini (and where App Check is
+// verified). Named in the Firebase AI Logic docs (FAQ "Required APIs", App Check page) and
+// matches DEFAULT_DOMAIN in the bundled SDK.
+const FIREBASE_AI_LOGIC_HOSTS = ["https://firebasevertexai.googleapis.com/*"];
+// Remote Config (cloud model names), its real-time update stream, and the Installations API it
+// needs to identify the app. Only reached on a route that uses the cloud
+// (providers/firebase-remote-config.js).
+const FIREBASE_REMOTE_CONFIG_HOSTS = [
+  "https://firebaseremoteconfig.googleapis.com/*",
+  "https://firebaseremoteconfigrealtime.googleapis.com/*",
+  "https://firebaseinstallations.googleapis.com/*",
+];
 
 export const EDITIONS = {
   nano: {
@@ -60,6 +78,21 @@ export const EDITIONS = {
       host_permissions: OLLAMA_HOSTS,
     },
   },
+  "firebase-hybrid": {
+    backends: ["firebase"],
+    // The real Firebase web config is git-ignored; it goes into dist/ (for Load unpacked) when
+    // it exists, but never into the zip: it holds the App Check debug token, a secret that
+    // lets anyone who has it call Firebase AI Logic as this app.
+    optionalFiles: ["firebase-settings.local.js"],
+    manifest: {
+      name: "MyLocalAI — Firebase Hybrid",
+      description: "Private AI chat in Chrome's side panel: Gemini Nano on-device via Firebase AI Logic, with an opt-in cloud Gemini fallback.",
+      action: { default_title: "Open MyLocalAI (Firebase Hybrid)" },
+      // Firebase AI Logic on-device (hybrid) inference needs Chrome desktop 139+.
+      minimum_chrome_version: "139",
+      host_permissions: [...FIREBASE_AI_LOGIC_HOSTS, ...FIREBASE_REMOTE_CONFIG_HOSTS],
+    },
+  },
 };
 
 function buildManifest(base, overrides) {
@@ -78,6 +111,28 @@ window.MYLOCALAI_CONFIG = ${JSON.stringify({ edition, backends }, null, 2)};
 `;
 }
 
+// Files an edition can use but that are not in git (e.g. local secrets/config).
+function copyOptionalFiles(edition, files, outDir) {
+  for (const file of files) {
+    if (existsSync(join(ROOT, file))) cpSync(join(ROOT, file), join(outDir, file));
+    else console.warn(`! ${edition}: ${file} not found — the edition will show setup instructions until you add it.`);
+  }
+}
+
+// The zip is what gets shared or uploaded, so local files (secrets, personal config) stay out.
+function zipEdition(edition, outDir, localFiles) {
+  const zipPath = join(DIST, `mylocalai-${edition}.zip`);
+  rmSync(zipPath, { force: true });
+  execFileSync("zip", ["-qr", zipPath, ".", ...zipExcludeArgs(localFiles)], { cwd: outDir });
+  const leftOut = localFiles.filter((file) => existsSync(join(outDir, file)));
+  if (leftOut.length) console.warn(`! ${edition}: ${leftOut.join(", ")} left out of the zip (local only).`);
+}
+
+// zip's -x takes patterns relative to the folder being zipped.
+export function zipExcludeArgs(localFiles) {
+  return localFiles.length ? ["-x", ...localFiles] : [];
+}
+
 function build(edition, { zip }) {
   const spec = EDITIONS[edition];
   const outDir = join(DIST, `mylocalai-${edition}`);
@@ -85,21 +140,21 @@ function build(edition, { zip }) {
   mkdirSync(outDir, { recursive: true });
 
   for (const file of SHARED_FILES) {
-    cpSync(join(ROOT, file), join(outDir, file), { recursive: true });
+    cpSync(join(ROOT, file), join(outDir, file), {
+      recursive: true,
+      filter: (source) => basename(source) !== ".DS_Store", // macOS clutter in copied folders
+    });
   }
+  copyOptionalFiles(edition, spec.optionalFiles ?? [], outDir);
 
   const baseManifest = JSON.parse(readFileSync(join(ROOT, "manifest.json"), "utf8"));
   const manifest = buildManifest(baseManifest, spec.manifest);
   writeFileSync(join(outDir, "manifest.json"), JSON.stringify(manifest, null, 2) + "\n");
   writeFileSync(join(outDir, "config.js"), buildConfig(edition, spec.backends));
 
-  if (zip) {
-    const zipPath = join(DIST, `mylocalai-${edition}.zip`);
-    rmSync(zipPath, { force: true });
-    execFileSync("zip", ["-qr", zipPath, "."], { cwd: outDir });
-  }
+  if (zip) zipEdition(edition, outDir, spec.optionalFiles ?? []);
 
-  console.log(`✓ ${edition.padEnd(6)} → dist/mylocalai-${edition}/${zip ? " (+ .zip)" : ""}`);
+  console.log(`✓ ${edition.padEnd(15)} → dist/mylocalai-${edition}/${zip ? " (+ .zip)" : ""}`);
 }
 
 const isMain = process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1];

@@ -1,0 +1,341 @@
+/* ---------- MESSAGES ---------- */
+.messages {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px 14px 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  /* No smooth scrolling: it fights user scrolling while streaming. */
+  overflow-anchor: none;
+}
+.messages.hidden { display: none; }
+
+/* Scrollbar */
+.messages::-webkit-scrollbar { width: 5px; }
+.messages::-webkit-scrollbar-track { background: transparent; }
+.messages::-webkit-scrollbar-thumb { background: hsla(230,15%,35%,0.4); border-radius: 4px; }
+.messages::-webkit-scrollbar-thumb:hover { background: hsla(230,15%,45%,0.6); }
+
+/* Individual message */
+.msg {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  animation: msg-in 0.35s var(--ease-out) both;
+}
+@keyframes msg-in {
+  from { opacity: 0; transform: translateY(10px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* A note from MyLocalAI itself, e.g. what Gemini Nano still remembers of a reopened chat. */
+.msg-note {
+  align-self: center;
+  max-width: 90%;
+  padding: 4px 10px;
+  font-size: 11px;
+  color: var(--text-muted);
+  text-align: center;
+}
+
+/* "Chat compacted": click to read the summary the model now gets instead of older messages. */
+.compact-note summary {
+  cursor: pointer;
+  list-style: none;
+}
+.compact-note summary::-webkit-details-marker { display: none; }
+.compact-note summary:hover,
+.compact-note summary:focus-visible { color: var(--text-secondary); }
+.compact-summary {
+  margin-top: 6px;
+  padding: 8px 10px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
+  text-align: left;
+  white-space: pre-wrap;
+}
+
+.msg-label {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  padding: 0 2px;
+}
+/* "You" sits directly above the right-aligned prompt bubble. */
+.msg.user .msg-label { color: var(--accent-from); align-self: flex-end; }
+.msg.ai .msg-label   { color: var(--accent-to); }
+
+.msg-bubble {
+  padding: 12px 14px;
+  border-radius: var(--radius-md);
+  font-size: 13.5px;
+  line-height: 1.6;
+  word-wrap: break-word;
+  white-space: pre-wrap;
+  max-width: 100%;
+}
+
+/* AI bubbles hold rendered Markdown HTML, so normal whitespace handling. */
+.msg.ai .msg-bubble { white-space: normal; }
+.msg-bubble > :first-child { margin-top: 0; }
+.msg-bubble > :last-child { margin-bottom: 0; }
+
+.msg.user .msg-bubble {
+  background: hsla(260, 60%, 55%, 0.12);
+  border: 1px solid hsla(260, 50%, 50%, 0.18);
+  border-bottom-right-radius: 4px;
+  align-self: flex-end;
+}
+.msg.ai .msg-bubble {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-subtle);
+  border-bottom-left-radius: 4px;
+}
+
+/* Copy / Hear buttons under a response, plus breathing room before the next message. */
+.msg.ai { margin-bottom: 12px; }
+.msg-actions {
+  display: flex;
+  gap: 6px;
+  margin-top: 4px;
+}
+.msg-actions.hidden { display: none; }
+/* Where the answer ran (on-device / cloud), set by showAnswerSource. */
+.msg-source {
+  align-self: center;
+  margin-left: auto;
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--border-subtle);
+  opacity: 0.85;
+}
+.msg-source-device { color: #34D399; border-color: rgba(52, 211, 153, 0.4); }
+.msg-source-cloud { color: #60A5FA; border-color: rgba(96, 165, 250, 0.4); }
+.msg-action-btn {
+  background: transparent;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  color: inherit;
+  opacity: 0.7;
+  font-size: 11px;
+  padding: 3px 10px;
+  cursor: pointer;
+}
+.msg-action-btn:hover, .msg-action-btn.speaking { opacity: 1; }
+
+/* Multi-answer reply: label + numbered tabs on one line, one pane per answer. */
+.variant-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.variant-tabs {
+  display: inline-flex;
+  gap: 2px;
+  padding: 2px;
+  border-radius: var(--radius-sm);
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-subtle);
+}
+.variant-tab {
+  position: relative;
+  min-width: 24px;
+  height: 22px;
+  padding: 0 6px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-secondary);
+  font: 600 11px var(--font);
+  cursor: pointer;
+  transition: background var(--duration), color var(--duration);
+}
+.variant-tab:hover { color: var(--text-primary); }
+.variant-tab.active { background: var(--accent-grad); color: #fff; }
+.variant-tab:focus-visible { outline: 2px solid var(--border-focus); outline-offset: 1px; }
+/* Small dot while that answer is still streaming; red text if it failed. */
+.variant-tab.streaming::after {
+  content: "";
+  position: absolute;
+  top: 3px;
+  right: 3px;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--accent-to);
+  animation: variant-pulse 1s ease-in-out infinite;
+}
+.variant-tab.failed:not(.active) { color: #F87171; }
+@keyframes variant-pulse { 50% { opacity: 0.3; } }
+.variant-pane { display: flex; flex-direction: column; gap: 4px; }
+.msg.ai.multi .msg-bubble { border-top-left-radius: 4px; }
+
+/* "Responses at once": radio buttons drawn as a segmented control. */
+.segmented {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 2px;
+  padding: 2px;
+  border-radius: var(--radius-sm);
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-subtle);
+}
+.segmented label { cursor: pointer; }
+.segmented input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+.segmented span {
+  display: block;
+  padding: 5px 0;
+  border-radius: 6px;
+  text-align: center;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  transition: background var(--duration), color var(--duration);
+}
+.segmented label:hover span { color: var(--text-primary); }
+.segmented input:checked + span { background: var(--accent-grad); color: #fff; }
+.segmented input:focus-visible + span { outline: 2px solid var(--border-focus); outline-offset: 1px; }
+.settings-hint {
+  margin: 0;
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--text-muted);
+}
+
+/* Thinking Block */
+.thinking-block {
+  margin-bottom: 12px;
+  border-radius: var(--radius-sm);
+  background: hsla(230, 20%, 6%, 0.3);
+  border: 1px solid var(--border-subtle);
+  overflow: hidden;
+}
+
+.thinking-block summary {
+  padding: 8px 12px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  user-select: none;
+  background: hsla(230, 20%, 15%, 0.4);
+  transition: background var(--duration), color var(--duration);
+}
+
+.thinking-block summary:hover {
+  background: hsla(230, 20%, 20%, 0.6);
+  color: var(--text-secondary);
+}
+
+.thinking-block summary::-webkit-details-marker {
+  display: none;
+}
+
+.thinking-block summary::before {
+  content: "💡";
+  font-size: 13px;
+  filter: grayscale(1) opacity(0.7);
+  transition: filter var(--duration);
+}
+
+.thinking-block[open] summary::before {
+  filter: grayscale(0) opacity(1);
+}
+
+.thinking-content {
+  padding: 12px;
+  font-size: 12.5px;
+  color: var(--text-secondary);
+  border-top: 1px solid var(--border-subtle);
+  background: hsla(230, 20%, 10%, 0.4);
+}
+.thinking-content > *:first-child { margin-top: 0; }
+.thinking-content > *:last-child { margin-bottom: 0; }
+
+/* Typing indicator */
+.typing-indicator {
+  display: inline-flex;
+  gap: 4px;
+  padding: 14px 16px;
+}
+.typing-indicator .dot {
+  width: 7px; height: 7px;
+  border-radius: 50%;
+  background: var(--accent-to);
+  opacity: 0.4;
+  animation: blink 1.4s infinite both;
+}
+.typing-indicator .dot:nth-child(2) { animation-delay: 0.2s; }
+.typing-indicator .dot:nth-child(3) { animation-delay: 0.4s; }
+@keyframes blink {
+  0%, 80%, 100% { opacity: 0.3; transform: scale(0.85); }
+  40% { opacity: 1; transform: scale(1.1); }
+}
+
+/* Streaming cursor */
+.msg-bubble .cursor {
+  display: inline-block;
+  width: 2px; height: 16px;
+  background: var(--accent-to);
+  vertical-align: text-bottom;
+  margin-left: 2px;
+  animation: blink-cursor 0.9s steps(2) infinite;
+}
+@keyframes blink-cursor {
+  0% { opacity: 1; } 50% { opacity: 0; }
+}
+
+
+/* ---------- SELECTED TEXT QUOTED IN A USER MESSAGE ---------- */
+.msg-selection {
+  margin-bottom: 8px;
+  padding: 6px 10px;
+  border-left: 3px solid var(--accent-from);
+  border-radius: 6px;
+  background: hsla(230, 20%, 6%, 0.35);
+}
+.msg-selection-label {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+.msg-selection-text {
+  margin-top: 2px;
+  font-size: 12px;
+  color: var(--text-secondary);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  display: -webkit-box;
+  -webkit-line-clamp: 4;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.msg-selection.expanded .msg-selection-text { display: block; max-height: 40vh; overflow-y: auto; }
+.msg-selection-toggle {
+  margin-top: 4px;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--accent-to);
+  font-family: var(--font);
+  font-size: 11px;
+  cursor: pointer;
+}
+.msg-selection-toggle:focus-visible { outline: 2px solid var(--border-focus); border-radius: 4px; }

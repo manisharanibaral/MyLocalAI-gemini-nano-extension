@@ -1,0 +1,476 @@
+/**
+ * MyLocalAI — Firebase AI Logic hybrid backend.
+ *
+ * Registers the "firebase" provider in window.MYLOCALAI_PROVIDERS. The sidebar only talks to it
+ * through that interface (init / stream / describe…), so the Nano and Ollama code is untouched.
+ *
+ * Hybrid inference (Firebase AI Logic Web SDK, bundled in vendor/firebase-ai.js):
+ *   - On-device: Gemini Nano through Chrome's Prompt API, driven by the Firebase SDK.
+ *   - Cloud: Gemini Developer API through the Firebase AI Logic proxy
+ *     (firebasevertexai.googleapis.com), protected by App Check.
+ * Cloud is OPT-IN: the default route is on-device only, which never sends chat text anywhere.
+ *
+ * Nothing here runs unless the edition's config.js lists "firebase" in `backends`; the SDK and
+ * the git-ignored firebase-settings.local.js are loaded lazily by init().
+ */
+(() => {
+  "use strict";
+
+  // ===================== CONSTANTS =====================
+  const SDK_PATH = "vendor/firebase-ai.js";
+  const SETTINGS_PATH = "firebase-settings.local.js";
+
+  const TEXT_IO = { expectedInputs: [{ type: "text", languages: ["en"] }], expectedOutputs: [{ type: "text", languages: ["en"] }] };
+  const VISION_IO = {
+    expectedInputs: [{ type: "text", languages: ["en"] }, { type: "image", languages: ["en"] }],
+    expectedOutputs: [{ type: "text", languages: ["en"] }],
+  };
+
+  // ===================== STATE =====================
+  let firebaseServices = null;      // { sdk, app, ai } — created once per page (App Check can't be re-initialized)
+  let deviceModel = { status: "unknown", vision: false, limits: null };
+  let cachedModel = null;           // { key, model } — reused so the SDK keeps a single on-device session
+  let answerQueue = Promise.resolve();
+  let lastInferenceSource = "";     // an sdk.InferenceSource value, for the footer label
+  let lastAnswerReason = "";        // a REASONS value, e.g. "cloud-failed", for the footer label
+  let lastSetupError = "";
+
+  // ===================== SETTINGS =====================
+  // In providers/firebase-settings.js, which sidebar.html loads first.
+  const {
+    ROUTES, CLOUD_MODELS, isCloudAllowed, currentRoute, currentCloudModel, applyCloudModelNames,
+    bindSettingsUI, setCloudOptInVisible, needsLaunchChoice, askLaunchChoice, listModels, selectModel,
+  } = window.MyLocalAIFirebaseSettings;
+
+  // In providers/firebase-routing.js (per-request routing, answer labels, structured output).
+  const {
+    REASONS, chooseRequestMode, reasonAfterAnswer, tooLongForDeviceMessage, describeAnswerSource, structuredOutputParams,
+  } = window.MyLocalAIFirebaseRouting;
+
+  // ===================== LOADING =====================
+  // Extension pages may only run scripts shipped with the extension; these are local files.
+  function loadScript(path) {
+    return new Promise((resolve, reject) => {
+      const script = document.createElement("script");
+      script.src = path;
+      script.onload = resolve;
+      script.onerror = () => reject(new Error(`Could not load ${path}`));
+      document.head.appendChild(script);
+    });
+  }
+
+  async function loadFirebaseSettings() {
+    if (!window.MYLOCALAI_FIREBASE) {
+      try {
+        await loadScript(SETTINGS_PATH);
+      } catch (_) {
+        throw setupError("FIREBASE_NOT_CONFIGURED");
+      }
+    }
+    const settings = window.MYLOCALAI_FIREBASE || {};
+    if (!isRealFirebaseConfig(settings.config)) throw setupError("FIREBASE_NOT_CONFIGURED");
+    return settings;
+  }
+
+  // The example file ships with "YOUR_…" placeholders; refuse those instead of calling Firebase.
+  function isRealFirebaseConfig(config) {
+    if (!config) return false;
+    return ["apiKey", "projectId", "appId"].every((key) =>
+      typeof config[key] === "string" && config[key].trim() && !config[key].startsWith("YOUR_"));
+  }
+
+  async function ensureFirebaseServices() {
+    if (firebaseServices) return firebaseServices;
+    const settings = await loadFirebaseSettings();
+    if (!window.MyLocalAIFirebase) await loadScript(SDK_PATH);
+    const sdk = window.MyLocalAIFirebase;
+
+    const app = sdk.initializeApp(settings.config);
+    initializeAppCheckForExtension(sdk, app, settings.appCheckDebugToken);
+    const ai = sdk.getAI(app, { backend: new sdk.GoogleAIBackend() });
+    firebaseServices = { sdk, app, ai };
+    return firebaseServices;
+  }
+
+  // App Check stays ON (Firebase AI Logic enforces it). Chrome extensions have no web attestation
+  // provider: reCAPTCHA is a remote script, which MV3 forbids. So this uses App Check's debug
+  // token flow: a token registered in the Firebase console (Security → App Check → Manage debug
+  // tokens). With no token configured, the SDK generates one and prints it to the console once.
+  // The CustomProvider is never asked for a token while a debug token is set.
+  function initializeAppCheckForExtension(sdk, app, debugToken) {
+    self.FIREBASE_APPCHECK_DEBUG_TOKEN = typeof debugToken === "string" && debugToken.trim() ? debugToken.trim() : true;
+    sdk.initializeAppCheck(app, {
+      provider: new sdk.CustomProvider({
+        getToken: () => Promise.reject(new Error("No App Check attestation provider for Chrome extensions; register a debug token.")),
+      }),
+      // Fetch a token only when a cloud request needs one, so on-device-only use makes no network calls.
+      isTokenAutoRefreshEnabled: false,
+    });
+  }
+
+  // Remote Config can rename the cloud models (firebase-remote-config.js). Fetched once per panel
+  // and then watched live, only on a route that can reach the cloud, so "On-device only" makes
+  // no request and closes the live stream.
+  let remoteModelNamesLoaded = false;
+  let stopWatchingModelNames = null;
+  let refreshSidebar = null; // the sidebar's onSettingsChanged, from bindSettingsUI
+
+  async function loadRemoteModelNames() {
+    if (remoteModelNamesLoaded) return;
+    remoteModelNamesLoaded = true;
+    const { sdk, app } = firebaseServices;
+    const remoteConfig = window.MyLocalAIFirebaseRemoteConfig;
+    applyCloudModelNames(await remoteConfig.fetchCloudModelNames(sdk, app));
+    stopWatchingModelNames = remoteConfig.watchCloudModelNames(sdk, app, applyLiveModelNames);
+  }
+
+  function stopRemoteModelNames() {
+    stopWatchingModelNames?.();
+    stopWatchingModelNames = null;
+    remoteModelNamesLoaded = false; // a later cloud route fetches and watches again
+  }
+
+  // A console publish while the panel is open. The next answer already uses the new name (the
+  // model is rebuilt when its params change); the header and model menu are redrawn once the
+  // current answer finishes, because the sidebar's restart would stop it.
+  function applyLiveModelNames(names) {
+    if (Object.keys(applyCloudModelNames(names)).length === 0) return;
+    answerQueue.then(() => refreshSidebar?.());
+  }
+
+  function bindSettingsUIAndRefresh(options = {}) {
+    refreshSidebar = options.onSettingsChanged || null;
+    bindSettingsUI(options);
+  }
+
+  // ===================== ON-DEVICE MODEL =====================
+  // Same availability check the Firebase SDK runs, done here so the UI can explain what's missing.
+  async function checkDeviceModel() {
+    if (typeof LanguageModel === "undefined") return { status: "unavailable", vision: false, limits: null };
+    try {
+      const vision = await LanguageModel.availability(VISION_IO);
+      if (vision === "available") return { status: vision, vision: true, limits: await readDeviceLimits() };
+      const text = await LanguageModel.availability(TEXT_IO);
+      return { status: text, vision: false, limits: text === "available" ? await readDeviceLimits() : null };
+    } catch (e) {
+      console.warn("[MyLocalAI] LanguageModel.availability failed:", e.message);
+      return { status: "unavailable", vision: false, limits: null };
+    }
+  }
+
+  async function readDeviceLimits() {
+    try { return typeof LanguageModel.params === "function" ? await LanguageModel.params() : null; } catch (_) { return null; }
+  }
+
+  // Downloading needs a user gesture (Chrome rule, repeated in the Firebase docs). Retry is one.
+  async function downloadDeviceModel(settings, showProgress) {
+    const model = await getModel(settings);
+    showProgress("Downloading Gemini Nano…", "Firebase AI Logic is preparing the on-device model. This can take a while.");
+    await model.initializeDeviceModel((loaded) => {
+      const pct = Math.round((loaded || 0) * 100);
+      showProgress(pct >= 100 ? "Preparing Gemini Nano…" : `Downloading Gemini Nano… ${pct}%`, "Keep this panel open.");
+    });
+    deviceModel = await checkDeviceModel();
+  }
+
+  // With cloud allowed, the first message (a user gesture) can start the download in the
+  // background; until it finishes, answers come from the cloud.
+  function startBackgroundDownload(settings) {
+    if (deviceModel.status !== "downloadable" || !navigator.userActivation?.isActive) return;
+    deviceModel.status = "downloading";
+    getModel(settings)
+      .then((model) => model.initializeDeviceModel())
+      .then(checkDeviceModel)
+      .then((status) => { deviceModel = status; })
+      .catch((e) => console.warn("[MyLocalAI] Background Gemini Nano download failed:", e.message));
+  }
+
+  // ===================== MODEL =====================
+  // Both sides get the same system prompt and sampling settings, in each side's own format.
+  // modeKey is an sdk.InferenceMode key: the route's own, or one chosen for a single request.
+  // Each side's prompt also names that side's model (withCloudIdentity / withDeviceIdentity).
+  function buildModelParams(settings, modeKey, cloudModelId) {
+    const { sdk } = firebaseServices;
+    const cloudModelName = CLOUD_MODELS[cloudModelId].id;
+    return {
+      mode: sdk.InferenceMode[modeKey],
+      inCloudParams: {
+        model: cloudModelName,
+        systemInstruction: withCloudIdentity(settings.systemPrompt, cloudModelName),
+        generationConfig: cloudGenerationConfig(settings),
+      },
+      onDeviceParams: {
+        createOptions: {
+          ...(deviceModel.vision ? VISION_IO : TEXT_IO),
+          initialPrompts: [{ role: "system", content: withDeviceIdentity(settings.systemPrompt) }],
+          ...deviceSamplingOptions(settings),
+        },
+      },
+    };
+  }
+
+  // maxOutputTokens is the "Answer length" cap. The cloud bills per token, so this is where
+  // the cap matters most; null (Long) leaves the model's own limit.
+  function cloudGenerationConfig(settings) {
+    const config = { temperature: settings.temperature, topK: settings.topK };
+    if (settings.maxOutputTokens) config.maxOutputTokens = settings.maxOutputTokens;
+    return config;
+  }
+
+  // Chrome accepts temperature/topK only together and only within its params() limits;
+  // without known limits, leave Chrome's defaults rather than risk a failing create().
+  function deviceSamplingOptions(settings) {
+    const limits = deviceModel.limits;
+    if (!limits?.maxTopK || !limits?.maxTemperature) return {};
+    return {
+      temperature: Math.min(settings.temperature, limits.maxTemperature),
+      topK: Math.max(1, Math.min(settings.topK, limits.maxTopK)),
+    };
+  }
+
+  async function getModel(settings, modeKey = ROUTES[currentRoute()].mode) {
+    const { sdk, ai } = await ensureFirebaseServices();
+    const params = buildModelParams(settings, modeKey, currentCloudModel());
+    const key = JSON.stringify(params);
+    if (cachedModel?.key !== key) cachedModel = { key, model: sdk.getGenerativeModel(ai, params) };
+    return cachedModel.model;
+  }
+
+  // ===================== MULTI-TURN → SINGLE PROMPT =====================
+  // In providers/firebase-prompt.js, which sidebar.html loads first.
+  const { buildConversationPrompt, withCloudIdentity, withDeviceIdentity } = window.MyLocalAIFirebasePrompt;
+
+  function buildRequest(prompt, images = []) {
+    if (images.length === 0) return prompt;
+    // Images are re-encoded as JPEG by the sidebar, one of the two types on-device accepts.
+    return [prompt, ...images.map((data) => ({ inlineData: { data, mimeType: "image/jpeg" } }))];
+  }
+
+  // ===================== STREAMING =====================
+  // The SDK replaces (and destroys) its on-device session on every call, so parallel answers
+  // ("Responses at once") would cancel each other. Answers therefore run one after another.
+  function stream(args) {
+    const run = answerQueue.then(() => streamOnce(args));
+    answerQueue = run.catch(() => { });
+    return run;
+  }
+
+  async function streamOnce({ history, images, signal, onText, settings }) {
+    throwIfAborted(signal);
+    startBackgroundDownload(settings);
+    const prompt = buildConversationPrompt(history);
+    const routing = routeRequest(settings, prompt);
+    const model = await getModel(settings, routing.mode);
+    const result = await model.generateContentStream(buildRequest(prompt, images), { signal });
+
+    let fullText = "";
+    let source = "";
+    for await (const chunk of result.stream) {
+      // The on-device stream ignores the signal, so stop reading it ourselves.
+      throwIfAborted(signal);
+      fullText += chunk.text();
+      if (chunk.inferenceSource) source = chunk.inferenceSource;
+      onText(fullText);
+    }
+    lastInferenceSource = source || sourceImpliedByMode(routing.mode);
+    lastAnswerReason = reasonAfterAnswer(routing, answeredOnDevice());
+    if (lastAnswerReason === REASONS.cloudFailed) {
+      console.warn("[MyLocalAI] Cloud first: the cloud request failed, so Gemini Nano answered. See the @firebase errors above (App Check 403 = debug token not registered).");
+    }
+    return { content: fullText, reasoning: "", source: answerSource(lastAnswerReason) };
+  }
+
+  function answeredOnDevice() {
+    return lastInferenceSource === firebaseServices.sdk.InferenceSource.ON_DEVICE;
+  }
+
+  // The user's route, adjusted for this one request (firebase-routing.js decides).
+  function routeRequest(settings, promptText) {
+    const request = { promptText, systemPrompt: settings.systemPrompt };
+    const routing = chooseRequestMode(ROUTES[currentRoute()], request);
+    if (routing.reason === REASONS.tooLongAndCloudOff) throw new Error(tooLongForDeviceMessage(request));
+    return routing;
+  }
+
+  // ONLY_* modes leave no choice, so they say where the answer ran even if a chunk does not.
+  function sourceImpliedByMode(modeKey) {
+    const { InferenceSource } = firebaseServices.sdk;
+    if (modeKey === "ONLY_ON_DEVICE") return InferenceSource.ON_DEVICE;
+    if (modeKey === "ONLY_IN_CLOUD") return InferenceSource.IN_CLOUD;
+    return "";
+  }
+
+  function answerSource(reason) {
+    if (!lastInferenceSource) return null;
+    return describeAnswerSource({
+      onDevice: answeredOnDevice(),
+      cloudModelId: CLOUD_MODELS[currentCloudModel()].id,
+      reason,
+    });
+  }
+
+  // ===================== STRUCTURED OUTPUT (memory tool, chat compaction) =====================
+  // Firebase hybrid structured output: the schema constrains Nano (responseConstraint) and the
+  // cloud model (responseSchema) alike, on the same route as the chat. Queued with the answers
+  // for the same reason they are.
+  function generateJson(args) {
+    const run = answerQueue.then(() => generateJsonOnce(args));
+    answerQueue = run.catch(() => { });
+    return run;
+  }
+
+  async function generateJsonOnce({ prompt, schema, signal, settings }) {
+    throwIfAborted(signal);
+    const { sdk, ai } = await ensureFirebaseServices();
+    const routing = routeRequest(settings, prompt);
+    const params = buildModelParams(settings, routing.mode, currentCloudModel());
+    const output = structuredOutputParams(schema);
+    params.inCloudParams.generationConfig = { ...params.inCloudParams.generationConfig, ...output.cloudGenerationConfig };
+    params.onDeviceParams.promptOptions = output.devicePromptOptions;
+    // A separate model: the chat model's on-device session must not get the JSON constraint.
+    const result = await sdk.getGenerativeModel(ai, params).generateContent(prompt, { signal });
+    return result.response.text();
+  }
+
+  // "Free memory when idle": drop the model so its on-device session can be released.
+  // The SDK has no public destroy(); the next answer rebuilds the model (and session) lazily.
+  function unload() {
+    cachedModel = null;
+  }
+
+  function throwIfAborted(signal) {
+    if (signal?.aborted) throw new DOMException("Generation stopped", "AbortError");
+  }
+
+  // ===================== INIT =====================
+  async function init({ showProgress, settings }) {
+    lastSetupError = "";
+    setCloudOptInVisible(false);
+    try {
+      // Before Firebase loads: the route decides whether anything may reach the network.
+      if (needsLaunchChoice()) {
+        showProgress("How should MyLocalAI run?", "Pick one. You can change it any time in Settings → Cloud & internet.");
+        await askLaunchChoice();
+      }
+      await ensureFirebaseServices();
+      deviceModel = await checkDeviceModel();
+      const route = ROUTES[currentRoute()];
+      if (route.usesCloud) await loadRemoteModelNames();
+      if (!route.usesCloud) stopRemoteModelNames();
+      if (!route.usesCloud) await requireDeviceModel(settings, showProgress);
+      cachedModel = null; // settings may have changed (Apply & Restart)
+      await getModel(settings);
+    } catch (err) {
+      lastSetupError = err.code || err.message;
+      // Offer the cloud opt-in only when on-device is the problem and the config is fine.
+      // It stays offered with "Cloud & internet" off: the overlay covers Settings, and the
+      // button is an explicit click that turns the switch back on.
+      setCloudOptInVisible(err.code === "DEVICE_UNAVAILABLE" || err.code === "DEVICE_NEEDS_GESTURE");
+      throw err;
+    }
+  }
+
+  async function requireDeviceModel(settings, showProgress) {
+    if (deviceModel.status === "available") return;
+    if (deviceModel.status === "unavailable") throw setupError("DEVICE_UNAVAILABLE");
+    if (!navigator.userActivation?.isActive) throw setupError("DEVICE_NEEDS_GESTURE");
+    await downloadDeviceModel(settings, showProgress);
+    if (deviceModel.status !== "available") throw setupError("DEVICE_UNAVAILABLE");
+  }
+
+  function setupError(code) {
+    const err = new Error(code);
+    err.code = code;
+    return err;
+  }
+
+  // ===================== UI TEXT =====================
+  function describe() {
+    const routeId = currentRoute();
+    const route = ROUTES[routeId];
+    const cloud = CLOUD_MODELS[currentCloudModel()].id;
+    const onDevice = deviceModel.status === "available";
+    return {
+      badge: isCloudAllowed() ? "Firebase Hybrid" : "Firebase Hybrid",
+      hint: route.usesCloud
+        ? ` Gemini Nano${onDevice ? "" : " (not ready)"} + cloud ${cloud}`
+        : " Gemini Nano · on-device",
+      welcome: route.usesCloud
+        ? `Powered by Firebase AI Logic. Answers run on-device with Gemini Nano when possible; otherwise your messages go to Google's ${cloud}.`
+        : "Powered by Firebase AI Logic with Gemini Nano, on your device. Cloud fallback is off.",
+      title: "MyLocalAI — Firebase Hybrid",
+      // Lets the sidebar say "stays on your device" only when that is true.
+      usesCloud: route.usesCloud,
+    };
+  }
+
+  // Images work wherever the request can actually be served: on-device vision, or the cloud
+  // when it will be used for this request (device not ready, or cloud preferred).
+  function supportsImages() {
+    const route = ROUTES[currentRoute()];
+    if (deviceModel.vision) return true;
+    return route.usesCloud && (currentRoute() === "prefer-cloud" || deviceModel.status !== "available");
+  }
+
+  function statusLine(messageCount) {
+    if (!lastInferenceSource) return `${messageCount} messages`;
+    // Compare with the SDK's constant: its values ("on_device") differ from the key names.
+    const where = lastInferenceSource === firebaseServices?.sdk.InferenceSource.ON_DEVICE
+      ? `on-device (Gemini Nano)${lastAnswerReason === REASONS.cloudFailed ? " · cloud failed" : ""}`
+      : `cloud (${CLOUD_MODELS[currentCloudModel()].id})`;
+    return `${messageCount} messages · last answer: ${where}`;
+  }
+
+  function errorTitle() {
+    return lastSetupError === "FIREBASE_NOT_CONFIGURED" ? "Firebase Not Configured" : "Gemini Nano Not Available";
+  }
+
+  function helpLines() {
+    if (lastSetupError === "FIREBASE_NOT_CONFIGURED") {
+      return [
+        "Add your Firebase web app config:",
+        "1. Copy firebase-settings.example.js to firebase-settings.local.js",
+        "2. Fill in the config from Firebase console → Project settings → Your apps",
+        "3. Run: node scripts/build.mjs firebase-hybrid",
+        "4. Reload the extension, then click Retry",
+      ];
+    }
+    if (lastSetupError === "DEVICE_NEEDS_GESTURE") {
+      return ["Gemini Nano is ready to download. Click Retry to start the download (Chrome needs a click)."];
+    }
+    if (lastSetupError === "DEVICE_UNAVAILABLE") {
+      return [
+        "On-device Gemini Nano isn't available in this Chrome, and cloud fallback is off.",
+        "",
+        "Needs Chrome desktop 139+ with chrome://flags/#prompt-api-for-gemini-nano-multimodal-input enabled.",
+        isCloudAllowed()
+          ? "Or allow the cloud fallback below: your messages are then sent to Google's Gemini API."
+          : "Cloud & internet is off. Allowing the cloud fallback below turns it back on and sends your messages to Google's Gemini API.",
+      ];
+    }
+    return [`Firebase AI Logic could not start: ${lastSetupError || "unknown error"}`];
+  }
+
+  // ===================== REGISTRATION =====================
+  window.MYLOCALAI_PROVIDERS = window.MYLOCALAI_PROVIDERS || {};
+  window.MYLOCALAI_PROVIDERS.firebase = {
+    id: "firebase",
+    statusMessage: "Starting Firebase AI Logic (hybrid)",
+    init,
+    stream,
+    generateJson,
+    unload,
+    describe,
+    supportsImages,
+    statusLine,
+    errorTitle,
+    helpLines,
+    bindSettingsUI: bindSettingsUIAndRefresh,
+    listModels,
+    selectModel,
+    isCloudAllowed,          // exposed for tests/firebase-checks.mjs
+    buildConversationPrompt, // exposed for tests/firebase-checks.mjs
+    buildRequest,            // exposed for tests/full-page-checks.mjs
+    cloudGenerationConfig,   // exposed for tests/firebase-checks.mjs
+  };
+})();

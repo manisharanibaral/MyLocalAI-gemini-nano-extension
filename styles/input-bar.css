@@ -1,0 +1,174 @@
+/* ---------- INPUT BAR ---------- */
+.input-bar {
+  padding: 10px 14px 12px;
+  background: var(--bg-glass);
+  backdrop-filter: blur(20px) saturate(1.4);
+  -webkit-backdrop-filter: blur(20px) saturate(1.4);
+  border-top: 1px solid var(--border-subtle);
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  transition: background-color 0.2s, border-color 0.2s;
+}
+
+.input-bar.drag-active {
+  background: hsla(260, 60%, 55%, 0.1);
+  border-top-color: var(--accent-from);
+}
+
+.context-card {
+  display: flex;
+  align-items: center;
+  background: rgba(139, 92, 246, 0.1);
+  border: 1px solid rgba(139, 92, 246, 0.3);
+  border-radius: 12px;
+  padding: 8px 12px;
+  gap: 8px;
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+  transition: all 0.2s ease;
+}
+
+.context-card.hidden {
+  display: none;
+}
+
+.context-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  color: var(--accent-from);
+}
+
+.context-icon svg {
+  width: 100%;
+  height: 100%;
+}
+
+.context-text {
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-style: italic;
+}
+
+/* Selected text and screenshot titles wrap to fill the panel width, then clamp, so a wider
+   sidebar shows more instead of cutting everything to one short line. */
+#context-text,
+.img-preview-text {
+  min-width: 0;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  line-height: 1.4;
+}
+#context-text { -webkit-line-clamp: 3; line-clamp: 3; }
+.img-preview-text { -webkit-line-clamp: 2; line-clamp: 2; }
+/* The preview and, below it, the "too long" note share the card's middle column. */
+.context-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.context-note { font-size: 0.75rem; color: var(--text-muted); }
+.context-note.hidden { display: none; }
+#context-card .context-icon { align-self: flex-start; margin-top: 2px; flex-shrink: 0; }
+#context-card .btn-clear-context,
+#image-preview-card .btn-clear-context { flex-shrink: 0; }
+
+/* The access question wraps instead of being cut off: it is the whole point of the card. */
+.screenshot-access-card .context-text { white-space: normal; font-style: normal; }
+.btn-card-action {
+  flex-shrink: 0;
+  padding: 4px 12px;
+  border: none;
+  border-radius: 6px;
+  background: var(--accent-grad);
+  color: #fff;
+  font-family: var(--font);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.btn-card-action:hover { filter: brightness(1.1); }
+
+.btn-clear-context {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+}
+
+.btn-clear-context:hover {
+  color: hsl(0, 72%, 55%);
+  background: hsla(0, 72%, 55%, 0.1);
+}
+
+.btn-clear-context svg {
+  width: 16px;
+  height: 16px;
+}
+
+.input-wrap {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  padding: 6px 8px 6px 14px;
+  transition: border-color var(--duration), box-shadow var(--duration);
+}
+.input-wrap:focus-within {
+  border-color: var(--border-focus);
+  box-shadow: 0 0 0 3px hsla(260, 70%, 60%, 0.1);
+}
+
+.icon-btn-input {
+  width: 32px; height: 32px;
+  color: var(--text-muted);
+}
+.icon-btn-input:hover { color: var(--text-primary); }
+
+/* Plus button + its attach menu, which opens upward above the input. */
+.attach-wrap { position: relative; flex-shrink: 0; }
+.attach-menu {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: -6px;
+  min-width: 190px;
+  padding: 4px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-md);
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+}
+.attach-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-primary);
+  font-family: var(--font);
+  font-size: 13px;
+  text-align: left;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.attach-menu-item svg { width: 16px; height: 16px; color: var(--text-secondary); flex-shrink: 0; }
+.attach-menu-item:hover, .attach-menu-item:focus-visible { background: var(--bg-tertiary); outline: none; }
+.attach-menu-item:disabled { opacity: 0.5; cursor: default; }
+
